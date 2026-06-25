@@ -1,0 +1,154 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TomorrowOS brand.json",
+  "description": "The single source of truth for branding across the CMS UI and the device activation screen. One file, read by both the CMS server at runtime and the CLI at player-build time.",
+  "type": "object",
+  "required": ["name", "targetPlatforms", "primaryColor", "logoPath", "cms"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 60,
+      "description": "Display name of the CMS / product / company. Appears in the CMS header and on the activation screen."
+    },
+    "tagline": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "Optional short tagline shown under the name on the activation screen."
+    },
+    "targetPlatforms": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": ["tizen", "brightsign", "webos", "android_managed", "android_generic", "chromeos_managed", "windows_player"]
+      },
+      "description": "Which platforms the CLI should be able to build players for. V1 supports tizen and brightsign only."
+    },
+    "primaryColor": {
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}$",
+      "description": "Main brand colour. Used for buttons, highlights, and the activation screen accent. Must be a hex string."
+    },
+    "secondaryColor": {
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}$",
+      "description": "Optional secondary brand colour."
+    },
+    "backgroundColor": {
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}$",
+      "default": "#FAFAF9",
+      "description": "Page background colour in the CMS. Defaults to near-white."
+    },
+    "textColor": {
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}$",
+      "default": "#0A0908",
+      "description": "Default text colour. Defaults to near-black."
+    },
+    "logoPath": {
+      "type": "string",
+      "description": "Relative path from project root to the primary logo file. SVG preferred; PNG accepted. Used in the CMS header and baked into the activation screen at build time."
+    },
+    "logoPathOnDark": {
+      "type": "string",
+      "description": "Optional alternate logo for use on dark backgrounds (e.g. the activation screen when backgroundColor is dark)."
+    },
+    "fontFamily": {
+      "type": "string",
+      "default": "Inter",
+      "description": "Font family name. The CMS will attempt to load this from Google Fonts unless overridden by fontUrl."
+    },
+    "fontUrl": {
+      "type": "string",
+      "format": "uri",
+      "description": "Optional full URL to a self-hosted font file or stylesheet. Overrides fontFamily default."
+    },
+    "supportUrl": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL shown on the activation screen and in the CMS footer for support contact."
+    },
+    "supportEmail": {
+      "type": "string",
+      "format": "email",
+      "description": "Support email address shown on the activation screen."
+    },
+    "cmsEndpoint": {
+      "type": "string",
+      "description": "WebSocket URL the player will connect to. Should be wss:// in production, ws:// only for local testing. Baked into the player at build time. If omitted, the CLI will prompt during build."
+    },
+    "activationScreen": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "headline": {
+          "type": "string",
+          "default": "Connect this screen",
+          "description": "Large headline text on the activation screen."
+        },
+        "instructions": {
+          "type": "string",
+          "default": "Enter the code below in your dashboard to activate this screen.",
+          "description": "Supporting instructions shown under the headline."
+        },
+        "showDeviceInfo": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to show device model, serial, and installation ID in small text at the bottom of the activation screen. Useful for support."
+        },
+        "showNetworkStatus": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to show a small network-connected indicator (green dot) on the activation screen."
+        },
+        "backgroundImagePath": {
+          "type": "string",
+          "description": "Optional path to a background image for the activation screen. Replaces the solid backgroundColor if set."
+        },
+        "theme": {
+          "enum": ["light", "dark", "auto"],
+          "default": "light",
+          "description": "Activation screen theme. Affects which logo (logoPath vs logoPathOnDark) is used."
+        }
+      }
+    },
+    "cms": {
+      "type": "object",
+      "required": ["useCase", "hostingTarget", "expectedScreens"],
+      "additionalProperties": false,
+      "properties": {
+        "useCase": {
+          "enum": ["restaurant", "retail", "corporate", "wayfinding", "transit", "education", "healthcare", "other"],
+          "description": "Primary deployment context. Affects example content and default copy in the generated CMS."
+        },
+        "hostingTarget": {
+          "enum": ["here", "vercel", "railway", "self-hosted"],
+          "description": "Where the CMS server is deployed. Affects configuration in the starter template."
+        },
+        "expectedScreens": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Approximate number of screens at launch. Affects whether pagination, grouping, and fleet features are included in the generated CMS."
+        },
+        "features": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "bulkCommands": { "type": "boolean", "default": false, "description": "Include fleet.broadcast UI for bulk operations." },
+            "proofOfPlay": { "type": "boolean", "default": false, "description": "Include proof-of-play reporting page." },
+            "contentScheduling": { "type": "boolean", "default": true, "description": "Include scheduling UI for time-based content." },
+            "userManagement": { "type": "boolean", "default": false, "description": "Include multi-user / role management." }
+          }
+        }
+      }
+    },
+    "protocolVersion": {
+      "type": "string",
+      "const": "1.0",
+      "description": "TomorrowOS wire protocol version this brand.json targets. Set automatically by npx tomorrowos init; do not edit."
+    }
+  }
+}

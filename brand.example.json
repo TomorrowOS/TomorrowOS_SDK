@@ -1,0 +1,34 @@
+{
+  "name": "Acme Burger",
+  "tagline": "Menu boards across all locations",
+  "targetPlatforms": ["tizen", "brightsign"],
+  "primaryColor": "#E63946",
+  "secondaryColor": "#F1FAEE",
+  "backgroundColor": "#FAFAF9",
+  "textColor": "#0A0908",
+  "logoPath": "./assets/acme-logo.svg",
+  "logoPathOnDark": "./assets/acme-logo-white.svg",
+  "fontFamily": "Inter",
+  "supportUrl": "https://acmeburger.com/signage-support",
+  "supportEmail": "it@acmeburger.com",
+  "cmsEndpoint": "wss://acme-signage.replit.app",
+  "activationScreen": {
+    "headline": "Connect this menu board",
+    "instructions": "Open the Acme Signage dashboard and enter the code below to activate this screen.",
+    "showDeviceInfo": true,
+    "showNetworkStatus": true,
+    "theme": "light"
+  },
+  "cms": {
+    "useCase": "restaurant",
+    "hostingTarget": "here",
+    "expectedScreens": 12,
+    "features": {
+      "bulkCommands": true,
+      "proofOfPlay": false,
+      "contentScheduling": true,
+      "userManagement": false
+    }
+  },
+  "protocolVersion": "1.0"
+}

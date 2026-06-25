@@ -1,0 +1,109 @@
+/**
+ * TomorrowOS style tokens
+ *
+ * These CSS custom properties are the visual seed of the CMS. They are
+ * derived from brand.json at server start — the CMS should never hard-code
+ * colours, typography, or spacing values.
+ *
+ * The LLM generating a CMS should reference these variables exclusively
+ * and build components that match the patterns in components.md.
+ */
+
+:root {
+  /* ═══ Brand ═══ */
+  /* These four are overridden by brand.json at build / runtime */
+  --color-primary: #FF8A3D;       /* brand.primaryColor */
+  --color-secondary: #F5F3EF;     /* brand.secondaryColor (optional) */
+  --color-background: #FAFAF9;    /* brand.backgroundColor */
+  --color-text: #0A0908;          /* brand.textColor */
+
+  /* ═══ Neutrals (fixed) ═══ */
+  --color-ink: #0A0908;
+  --color-dim: #706860;
+  --color-faint: #C4BEB4;
+  --color-mist: #F5F3EF;
+  --color-paper: #FAFAF9;
+  --color-divider: #E8E5DF;
+
+  /* ═══ Feedback (fixed) ═══ */
+  --color-success: #1D9E75;
+  --color-success-bg: #E5F4EC;
+  --color-warning: #F0B429;
+  --color-warning-bg: #FFF7E5;
+  --color-error: #C93333;
+  --color-error-bg: #FCE8E8;
+  --color-info: #4A90D9;
+  --color-info-bg: #E8F1F9;
+
+  /* ═══ Typography ═══ */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;  /* brand.fontFamily */
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+  --text-2xl: 28px;
+  --text-3xl: 36px;
+  --text-4xl: 48px;
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* ═══ Spacing ═══ */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+
+  /* ═══ Radii ═══ */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 16px;
+  --radius-pill: 9999px;
+
+  /* ═══ Shadows ═══ */
+  --shadow-sm: 0 1px 2px rgba(10, 9, 8, 0.04);
+  --shadow-md: 0 2px 8px rgba(10, 9, 8, 0.06);
+  --shadow-lg: 0 8px 24px rgba(10, 9, 8, 0.08);
+
+  /* ═══ Borders ═══ */
+  --border-width: 1px;
+  --border-width-thick: 2px;
+  --border-color: var(--color-divider);
+
+  /* ═══ Transitions ═══ */
+  --transition-fast: 120ms ease;
+  --transition-base: 200ms ease;
+  --transition-slow: 400ms ease;
+}
+
+/* Base resets */
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  color: var(--color-text);
+  background: var(--color-background);
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+code, pre, .mono {
+  font-family: var(--font-mono);
+}

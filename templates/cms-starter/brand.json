@@ -1,0 +1,23 @@
+{
+  "name": "My Venue",
+  "tagline": "Digital signage",
+  "targetPlatforms": ["tizen"],
+  "primaryColor": "#FF8A3D",
+  "secondaryColor": "#F5F3EF",
+  "backgroundColor": "#FAFAF9",
+  "textColor": "#0A0908",
+  "logoPath": "./assets/logo.svg",
+  "fontFamily": "Inter",
+  "cms": {
+    "useCase": "other",
+    "hostingTarget": "self-hosted",
+    "expectedScreens": 5,
+    "features": {
+      "bulkCommands": false,
+      "proofOfPlay": false,
+      "contentScheduling": true,
+      "userManagement": false
+    }
+  },
+  "protocolVersion": "1.0"
+}

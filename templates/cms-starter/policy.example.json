@@ -1,0 +1,30 @@
+{
+  "policy": {
+    "playlists": [
+      {
+        "id": "weekday-promo",
+        "name": "Weekday promo",
+        "schedule": {
+          "startDate": "2026-05-01",
+          "endDate": "2026-05-31",
+          "daysOfWeek": [1, 2, 3, 4, 5],
+          "start": "09:00",
+          "end": "17:00"
+        },
+        "items": [
+          {
+            "url": "https://example.com/hero.jpg",
+            "type": "image",
+            "durationMs": 10000
+          },
+          {
+            "url": "https://example.com/spot.mp4",
+            "type": "video",
+            "durationMs": 30000
+          }
+        ]
+      }
+    ],
+    "fallback": { "type": "brand" }
+  }
+}

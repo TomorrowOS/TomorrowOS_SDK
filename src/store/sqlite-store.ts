@@ -1,0 +1,512 @@
+import fs from "fs";
+import path from "path";
+import Database from "better-sqlite3";
+
+import type {
+  DevicePlaylistAssignment,
+  DeviceRegistryEntry,
+  DeviceRegistryRecord,
+  PairedDeviceEntry,
+  PairedDeviceRecord,
+  PendingCodeEntry,
+  PendingCodeRecord,
+  PlaylistSchedule,
+  PublishedPlaylistSnapshot,
+  StoredPlaylist,
+  TomorrowOSMigratableStore
+} from "./types.js";
+
+interface SQLiteStoreOptions {
+  databasePath?: string;
+}
+
+interface PendingCodeRow {
+  code: string;
+  device_id: string;
+  created_at: number;
+}
+
+interface DeviceRegistryRow {
+  device_id: string;
+  permanent_pairing_code: string;
+  code_created_at: number;
+  serial_number: string | null;
+  first_seen_at: number | null;
+  last_hello_at: number | null;
+}
+
+interface PairedDeviceRow {
+  device_id: string;
+  pairing_token: string;
+  paired_at: string;
+  device_name: string | null;
+  platform: string | null;
+  system: string | null;
+  last_boot_at: string | null;
+  last_online_at: string | null;
+  last_offline_at: string | null;
+  last_policy_push_at: string | null;
+}
+
+interface PlaylistRow {
+  id: string;
+  name: string;
+  schedule_json: string | null;
+  items_json: string;
+  version: number;
+  updated_at: string;
+  retired: number;
+  retired_at: string | null;
+}
+
+interface DeviceAssignmentRow {
+  playlist_id: string;
+  published_version: number;
+  published_at: string;
+  snapshot_json: string;
+}
+
+const DEFAULT_SQLITE_PATH = path.join(process.cwd(), "data", "tomorrowos.db");
+
+function optionalString(value: string | null): string | undefined {
+  return value ?? undefined;
+}
+
+function optionalNumber(value: number | null): number | undefined {
+  return value ?? undefined;
+}
+
+function parseJson<T>(raw: string | null, fallback: T): T {
+  if (!raw) return fallback;
+  return JSON.parse(raw) as T;
+}
+
+/**
+ * Durable single-node store backed by a local SQLite database.
+ * For multi-instance production, inject a Postgres/Supabase-backed TomorrowOSStore instead.
+ */
+export class SQLiteStore implements TomorrowOSMigratableStore {
+  readonly databasePath: string;
+  private readonly db: Database.Database;
+
+  constructor(options: SQLiteStoreOptions | string = {}) {
+    const databasePath =
+      typeof options === "string"
+        ? options
+        : options.databasePath ?? DEFAULT_SQLITE_PATH;
+    this.databasePath = databasePath === ":memory:" ? databasePath : path.resolve(databasePath);
+
+    if (this.databasePath !== ":memory:") {
+      fs.mkdirSync(path.dirname(this.databasePath), { recursive: true });
+    }
+
+    this.db = new Database(this.databasePath);
+    this.init();
+  }
+
+  init(): void {
+    this.db.pragma("foreign_keys = ON");
+    this.db.pragma("journal_mode = WAL");
+    this.db.pragma("busy_timeout = 5000");
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS pending_codes (
+        code TEXT PRIMARY KEY,
+        device_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS device_registry (
+        device_id TEXT PRIMARY KEY,
+        permanent_pairing_code TEXT NOT NULL UNIQUE,
+        code_created_at INTEGER NOT NULL,
+        serial_number TEXT,
+        first_seen_at INTEGER,
+        last_hello_at INTEGER
+      );
+
+      CREATE TABLE IF NOT EXISTS paired_devices (
+        device_id TEXT PRIMARY KEY,
+        pairing_token TEXT NOT NULL,
+        paired_at TEXT NOT NULL,
+        device_name TEXT,
+        platform TEXT,
+        system TEXT,
+        last_boot_at TEXT,
+        last_online_at TEXT,
+        last_offline_at TEXT,
+        last_policy_push_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS playlists (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        schedule_json TEXT,
+        items_json TEXT NOT NULL DEFAULT '[]',
+        version INTEGER NOT NULL,
+        updated_at TEXT NOT NULL,
+        retired INTEGER NOT NULL DEFAULT 0,
+        retired_at TEXT
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS playlists_active_name_unique
+        ON playlists (lower(trim(name)))
+        WHERE retired = 0;
+
+      CREATE TABLE IF NOT EXISTS device_assignments (
+        device_id TEXT NOT NULL,
+        playlist_id TEXT NOT NULL,
+        sort_order INTEGER NOT NULL,
+        published_version INTEGER NOT NULL,
+        published_at TEXT NOT NULL,
+        snapshot_json TEXT NOT NULL,
+        PRIMARY KEY (device_id, playlist_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS device_assignments_device_order_idx
+        ON device_assignments (device_id, sort_order);
+
+      INSERT OR IGNORE INTO schema_migrations (id, name)
+        VALUES (1, 'initial_tomorrowos_store');
+    `);
+  }
+
+  close(): void {
+    this.db.close();
+  }
+
+  async setPendingCode(code: string, record: PendingCodeRecord): Promise<void> {
+    this.db.prepare(`
+      INSERT INTO pending_codes (code, device_id, created_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(code) DO UPDATE SET
+        device_id = excluded.device_id,
+        created_at = excluded.created_at
+    `).run(code, record.deviceId, record.createdAt);
+  }
+
+  async getPendingCode(code: string): Promise<PendingCodeRecord | undefined> {
+    const row = this.db.prepare(`
+      SELECT device_id, created_at
+      FROM pending_codes
+      WHERE code = ?
+    `).get(code) as PendingCodeRow | undefined;
+    if (!row) return undefined;
+    return { deviceId: row.device_id, createdAt: row.created_at };
+  }
+
+  async deletePendingCode(code: string): Promise<void> {
+    this.db.prepare("DELETE FROM pending_codes WHERE code = ?").run(code);
+  }
+
+  async listPendingCodes(): Promise<PendingCodeEntry[]> {
+    const rows = this.db.prepare(`
+      SELECT code, device_id, created_at
+      FROM pending_codes
+      ORDER BY created_at ASC
+    `).all() as PendingCodeRow[];
+    return rows.map((row) => ({
+      code: row.code,
+      record: { deviceId: row.device_id, createdAt: row.created_at }
+    }));
+  }
+
+  async getDeviceRegistry(
+    deviceId: string
+  ): Promise<DeviceRegistryRecord | undefined> {
+    const row = this.db.prepare(`
+      SELECT *
+      FROM device_registry
+      WHERE device_id = ?
+    `).get(deviceId) as DeviceRegistryRow | undefined;
+    return row ? this.mapDeviceRegistryRow(row) : undefined;
+  }
+
+  async setDeviceRegistry(
+    deviceId: string,
+    record: DeviceRegistryRecord
+  ): Promise<void> {
+    this.db.prepare(`
+      INSERT INTO device_registry (
+        device_id,
+        permanent_pairing_code,
+        code_created_at,
+        serial_number,
+        first_seen_at,
+        last_hello_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(device_id) DO UPDATE SET
+        permanent_pairing_code = excluded.permanent_pairing_code,
+        code_created_at = excluded.code_created_at,
+        serial_number = excluded.serial_number,
+        first_seen_at = excluded.first_seen_at,
+        last_hello_at = excluded.last_hello_at
+    `).run(
+      deviceId,
+      record.permanentPairingCode,
+      record.codeCreatedAt,
+      record.serialNumber ?? null,
+      record.firstSeenAt ?? null,
+      record.lastHelloAt ?? null
+    );
+  }
+
+  async getDeviceRegistryByCode(
+    code: string
+  ): Promise<{ deviceId: string; record: DeviceRegistryRecord } | undefined> {
+    const row = this.db.prepare(`
+      SELECT *
+      FROM device_registry
+      WHERE permanent_pairing_code = ?
+    `).get(code) as DeviceRegistryRow | undefined;
+    if (!row) return undefined;
+    return {
+      deviceId: row.device_id,
+      record: this.mapDeviceRegistryRow(row)
+    };
+  }
+
+  async listDeviceRegistry(): Promise<DeviceRegistryEntry[]> {
+    const rows = this.db.prepare(`
+      SELECT *
+      FROM device_registry
+      ORDER BY code_created_at ASC
+    `).all() as DeviceRegistryRow[];
+    return rows.map((row) => ({
+      deviceId: row.device_id,
+      record: this.mapDeviceRegistryRow(row)
+    }));
+  }
+
+  async setPairedDevice(
+    deviceId: string,
+    record: PairedDeviceRecord
+  ): Promise<void> {
+    this.db.prepare(`
+      INSERT INTO paired_devices (
+        device_id,
+        pairing_token,
+        paired_at,
+        device_name,
+        platform,
+        system,
+        last_boot_at,
+        last_online_at,
+        last_offline_at,
+        last_policy_push_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(device_id) DO UPDATE SET
+        pairing_token = excluded.pairing_token,
+        paired_at = excluded.paired_at,
+        device_name = excluded.device_name,
+        platform = excluded.platform,
+        system = excluded.system,
+        last_boot_at = excluded.last_boot_at,
+        last_online_at = excluded.last_online_at,
+        last_offline_at = excluded.last_offline_at,
+        last_policy_push_at = excluded.last_policy_push_at
+    `).run(
+      deviceId,
+      record.pairingToken,
+      record.pairedAt,
+      record.deviceName ?? null,
+      record.platform ?? null,
+      record.system ?? null,
+      record.lastBootAt ?? null,
+      record.lastOnlineAt ?? null,
+      record.lastOfflineAt ?? null,
+      record.lastPolicyPushAt ?? null
+    );
+  }
+
+  async getPairedDevice(
+    deviceId: string
+  ): Promise<PairedDeviceRecord | undefined> {
+    const row = this.db.prepare(`
+      SELECT *
+      FROM paired_devices
+      WHERE device_id = ?
+    `).get(deviceId) as PairedDeviceRow | undefined;
+    return row ? this.mapPairedDeviceRow(row) : undefined;
+  }
+
+  async deletePairedDevice(deviceId: string): Promise<void> {
+    this.db.prepare("DELETE FROM paired_devices WHERE device_id = ?").run(deviceId);
+  }
+
+  async listPairedDevices(): Promise<PairedDeviceEntry[]> {
+    const rows = this.db.prepare(`
+      SELECT *
+      FROM paired_devices
+      ORDER BY paired_at ASC
+    `).all() as PairedDeviceRow[];
+    return rows.map((row) => ({
+      deviceId: row.device_id,
+      record: this.mapPairedDeviceRow(row)
+    }));
+  }
+
+  async listPlaylists(): Promise<StoredPlaylist[]> {
+    const rows = this.db.prepare(`
+      SELECT *
+      FROM playlists
+      ORDER BY updated_at DESC
+    `).all() as PlaylistRow[];
+    return rows.map((row) => this.mapPlaylistRow(row));
+  }
+
+  async getPlaylist(id: string): Promise<StoredPlaylist | undefined> {
+    const row = this.db.prepare(`
+      SELECT *
+      FROM playlists
+      WHERE id = ?
+    `).get(id) as PlaylistRow | undefined;
+    return row ? this.mapPlaylistRow(row) : undefined;
+  }
+
+  async setPlaylist(record: StoredPlaylist): Promise<void> {
+    this.db.prepare(`
+      INSERT INTO playlists (
+        id,
+        name,
+        schedule_json,
+        items_json,
+        version,
+        updated_at,
+        retired,
+        retired_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        schedule_json = excluded.schedule_json,
+        items_json = excluded.items_json,
+        version = excluded.version,
+        updated_at = excluded.updated_at,
+        retired = excluded.retired,
+        retired_at = excluded.retired_at
+    `).run(
+      record.id,
+      record.name,
+      record.schedule ? JSON.stringify(record.schedule) : null,
+      JSON.stringify(record.items ?? []),
+      record.version,
+      record.updatedAt,
+      record.retired ? 1 : 0,
+      record.retiredAt ?? null
+    );
+  }
+
+  async isPlaylistNameTaken(name: string, excludeId?: string): Promise<boolean> {
+    const target = name.trim().toLowerCase();
+    if (!target) return false;
+    const row = this.db.prepare(`
+      SELECT id
+      FROM playlists
+      WHERE retired = 0
+        AND lower(trim(name)) = ?
+        AND (? IS NULL OR id != ?)
+      LIMIT 1
+    `).get(target, excludeId ?? null, excludeId ?? null) as { id: string } | undefined;
+    return !!row;
+  }
+
+  async getDeviceAssignments(
+    deviceId: string
+  ): Promise<DevicePlaylistAssignment[]> {
+    const rows = this.db.prepare(`
+      SELECT playlist_id, published_version, published_at, snapshot_json
+      FROM device_assignments
+      WHERE device_id = ?
+      ORDER BY sort_order ASC
+    `).all(deviceId) as DeviceAssignmentRow[];
+    return rows.map((row) => ({
+      playlistId: row.playlist_id,
+      publishedVersion: row.published_version,
+      publishedAt: row.published_at,
+      snapshot: parseJson<PublishedPlaylistSnapshot>(row.snapshot_json, {
+        id: row.playlist_id,
+        name: row.playlist_id,
+        version: row.published_version,
+        items: []
+      })
+    }));
+  }
+
+  async setDeviceAssignments(
+    deviceId: string,
+    assignments: DevicePlaylistAssignment[]
+  ): Promise<void> {
+    const replaceAssignments = this.db.transaction(() => {
+      this.db.prepare("DELETE FROM device_assignments WHERE device_id = ?").run(deviceId);
+      const insert = this.db.prepare(`
+        INSERT INTO device_assignments (
+          device_id,
+          playlist_id,
+          sort_order,
+          published_version,
+          published_at,
+          snapshot_json
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+
+      assignments.forEach((assignment, index) => {
+        insert.run(
+          deviceId,
+          assignment.playlistId,
+          index,
+          assignment.publishedVersion,
+          assignment.publishedAt,
+          JSON.stringify(assignment.snapshot)
+        );
+      });
+    });
+
+    replaceAssignments();
+  }
+
+  private mapDeviceRegistryRow(row: DeviceRegistryRow): DeviceRegistryRecord {
+    return {
+      permanentPairingCode: row.permanent_pairing_code,
+      codeCreatedAt: row.code_created_at,
+      serialNumber: optionalString(row.serial_number),
+      firstSeenAt: optionalNumber(row.first_seen_at),
+      lastHelloAt: optionalNumber(row.last_hello_at)
+    };
+  }
+
+  private mapPairedDeviceRow(row: PairedDeviceRow): PairedDeviceRecord {
+    return {
+      pairingToken: row.pairing_token,
+      pairedAt: row.paired_at,
+      deviceName: optionalString(row.device_name),
+      platform: optionalString(row.platform),
+      system: optionalString(row.system),
+      lastBootAt: optionalString(row.last_boot_at),
+      lastOnlineAt: optionalString(row.last_online_at),
+      lastOfflineAt: optionalString(row.last_offline_at),
+      lastPolicyPushAt: optionalString(row.last_policy_push_at)
+    };
+  }
+
+  private mapPlaylistRow(row: PlaylistRow): StoredPlaylist {
+    return {
+      id: row.id,
+      name: row.name,
+      schedule: parseJson<PlaylistSchedule | undefined>(row.schedule_json, undefined),
+      items: parseJson(row.items_json, []),
+      version: row.version,
+      updatedAt: row.updated_at,
+      retired: row.retired === 1,
+      retiredAt: optionalString(row.retired_at)
+    };
+  }
+}

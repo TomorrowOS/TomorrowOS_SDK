@@ -1,0 +1,47 @@
+{
+  "name": "@tomorrowos/sdk",
+  "version": "0.5.1",
+  "description": "TomorrowOS CMS server SDK - WebSocket transport, pairing, device commands, optional static CMS UI. Includes CLI (tomorrowos init / build) and starter templates.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "tomorrowos": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "templates",
+    "README.md",
+    "LLM_PROMPT.md",
+    "BUILD_GUARDRAILS.md",
+    "PLAYER_INSTALL.md",
+    "brand.schema.json",
+    "brand.example.json"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "pg": "^8.22.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20.19.41",
+    "@types/pg": "^8.20.0",
+    "@types/ws": "^8.5.10",
+    "typescript": "^5.5.0"
+  },
+  "license": "Apache-2.0"
+}

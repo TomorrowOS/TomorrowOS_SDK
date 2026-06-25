@@ -1,0 +1,22 @@
+{
+  "name": "my-cms",
+  "version": "0.5.1",
+  "description": "CMS server on @tomorrowos/sdk. Add your UI (React, static files, etc.) alongside this server.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch server.ts",
+    "start": "tsx server.ts",
+    "build-player": "tomorrowos build --platform tizen"
+  },
+  "dependencies": {
+    "@tomorrowos/sdk": "^0.5.1",
+    "dotenv": "^17.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  }
+}
+

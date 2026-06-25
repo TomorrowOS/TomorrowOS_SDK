@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TomorrowOS Control Panel</title>
+    <link rel="stylesheet" href="./panel.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <h1>TomorrowOS Control Panel</h1>
+      <p>Create playlists, save with confirm, then publish selected playlists per device.</p>
+    </header>
+
+    <div class="layout">
+      <aside class="panel-playlist-nav">
+        <div class="playlist-nav-header">
+          <h2>Playlists</h2>
+          <button type="button" class="primary" id="newPlaylistBtn" title="New playlist">+</button>
+        </div>
+        <ul id="playlistCatalog" class="playlist-catalog"></ul>
+      </aside>
+
+      <main class="panel-main">
+        <section class="card">
+          <h2>Pair device</h2>
+          <p class="hint">Enter the 6-character code on the screen (A–Z or 0–9).</p>
+          <div class="row">
+            <input id="code" maxlength="6" placeholder="e.g. A3K9Z1" autocapitalize="characters" />
+            <button type="button" onclick="verify()">Verify</button>
+          </div>
+        </section>
+
+        <section class="card" id="pairedDevicesSection">
+          <h2>Paired devices</h2>
+          <div id="devicesGrid" class="devices-grid">
+            <p class="devices-empty" id="devicesEmpty">No paired devices yet.</p>
+          </div>
+        </section>
+
+        <section class="card" id="cmsUrlSection">
+          <h2>CMS URL for screens</h2>
+          <p class="hint">
+            <strong>Local development only.</strong> Optional LAN override so TVs reach your PC (not localhost).
+            Hosted CMS (e.g. Replit) uses its public URL automatically — leave this empty there.
+          </p>
+          <div class="row">
+            <input
+              id="cmsDeviceBaseUrl"
+              type="text"
+              style="flex: 1; min-width: 16rem"
+              placeholder="http://192.168.1.105:3000"
+            />
+            <button type="button" onclick="saveCmsDeviceBaseUrl()">Save</button>
+          </div>
+        </section>
+
+        <section class="card hidden" id="playlistEditorSection">
+          <h2 id="editorTitle">Playlist editor</h2>
+          <p class="hint">Save confirms changes. Names must be unique. Schedule applies to this playlist only.</p>
+          <label class="field-label">
+            Name
+            <input type="text" id="playlistName" placeholder="e.g. Weekday promo" />
+          </label>
+
+          <h3 class="subheading">When this playlist plays</h3>
+          <p class="hint">
+            Leave blank for always on. Uses the <strong>TV/device local clock</strong> (not CMS server time).
+            Schedule is one continuous run: <strong>from date/time → until date/time</strong>
+            (e.g. May 5 13:00 through May 8 14:00), not a daily repeat inside those dates.
+            “Until” time stops at that moment (exclusive).
+          </p>
+          <div class="schedule-grid">
+            <label>
+              Run from (date)
+              <input type="date" id="scheduleStartDate" />
+            </label>
+            <label>
+              Run from (time)
+              <input type="time" id="scheduleStartTime" />
+            </label>
+            <label>
+              Run until (date)
+              <input type="date" id="scheduleEndDate" />
+            </label>
+            <label>
+              Run until (time)
+              <input type="time" id="scheduleEndTime" />
+            </label>
+          </div>
+
+          <div class="editor-actions">
+            <button type="button" class="primary" id="savePlaylistBtn">Save playlist</button>
+            <button type="button" class="danger" id="deletePlaylistBtn">Delete playlist</button>
+          </div>
+        </section>
+
+        <pre id="result" aria-live="polite"></pre>
+      </main>
+
+      <aside class="panel-playlist">
+        <div class="playlist-header">
+          <h2>Assets</h2>
+          <button type="button" class="primary" id="addAssetBtn" title="Add image or video">+</button>
+        </div>
+        <input
+          type="file"
+          id="fileInput"
+          class="hidden"
+          accept="image/*,video/*,.wgt,.zip"
+          multiple
+        />
+        <div id="uploadStatusShell" class="upload-status hidden" aria-live="polite">
+          <div id="uploadStatusText" class="upload-status-text">Uploading...</div>
+          <div class="upload-progress-track">
+            <div id="uploadProgressBar" class="upload-progress-bar"></div>
+          </div>
+          <div id="uploadQueueText" class="upload-queue-text"></div>
+        </div>
+        <ul id="playlistList" class="playlist-list">
+          <li class="playlist-empty" id="playlistEmpty">Select or create a playlist, then add assets.</li>
+        </ul>
+      </aside>
+    </div>
+
+    <div id="publishModal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-backdrop" data-close-modal="1"></div>
+      <div class="modal-card">
+        <h2>Publish to device</h2>
+        <p class="hint" id="publishModalHint">Select playlists to add to this device. Already-published playlists are not listed here.</p>
+        <div id="publishChecklist" class="publish-checklist"></div>
+        <div class="modal-actions">
+          <button type="button" id="publishConfirmBtn" class="primary">Publish selected</button>
+          <button type="button" data-close-modal="1">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="./methods.js" defer></script>
+  </body>
+</html>
