@@ -115,6 +115,18 @@ function formatDeviceSystemForFirmware(
   return base ? `${base}` : fw;
 }
 
+function normalizeDeviceSystemLabel(
+  platform?: string | null,
+  system?: string | null
+): string | undefined {
+  const normalizedPlatform = normalizeDevicePlatform(platform, system);
+  if (normalizedPlatform === "brightsign") return "BrightSignOS";
+  if (normalizedPlatform === "tizen") return "Tizen";
+
+  const label = typeof system === "string" ? system.trim() : "";
+  return label || undefined;
+}
+
 export interface DeviceListItem {
   deviceId: string;
   /** Permanent 6-character alphanumeric pairing code (same after unpair). */
@@ -530,10 +542,13 @@ export class TomorrowOS extends EventEmitter {
 
   private captureHelloMeta(deviceId: string, msg: Record<string, unknown>): void {
     const bootUptimeSec = parseBootUptimeSec(msg);
+    const platform =
+      typeof msg.platform === "string" ? msg.platform : undefined;
+    const system = typeof msg.system === "string" ? msg.system : undefined;
     this.pendingDeviceMeta.set(deviceId, {
-      platform: typeof msg.platform === "string" ? msg.platform : undefined,
+      platform,
       deviceName: typeof msg.deviceName === "string" ? msg.deviceName : undefined,
-      system: typeof msg.system === "string" ? msg.system : undefined,
+      system: normalizeDeviceSystemLabel(platform, system),
       bootedAt: typeof msg.bootedAt === "string" ? msg.bootedAt : undefined,
       bootUptimeSec: bootUptimeSec ?? undefined,
       playerVersion:
@@ -595,18 +610,22 @@ export class TomorrowOS extends EventEmitter {
     if (!existing) return;
 
     const lastBootAt = lastBootAtFromHandshake(msg, existing.lastBootAt);
+    const platform =
+      (typeof msg.platform === "string" ? msg.platform : undefined) ??
+      existing.platform;
+    const system =
+      normalizeDeviceSystemLabel(
+        platform,
+        typeof msg.system === "string" ? msg.system : existing.system
+      ) ?? existing.system;
 
     await this.store.setPairedDevice(deviceId, {
       ...existing,
       deviceName:
         (typeof msg.deviceName === "string" ? msg.deviceName : undefined) ??
         existing.deviceName,
-      platform:
-        (typeof msg.platform === "string" ? msg.platform : undefined) ??
-        existing.platform,
-      system:
-        (typeof msg.system === "string" ? msg.system : undefined) ??
-        existing.system,
+      platform,
+      system,
       ...(lastBootAt ? { lastBootAt } : {}),
       lastOnlineAt: now,
       lastOfflineAt: existing.lastOfflineAt
