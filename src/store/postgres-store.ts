@@ -11,7 +11,9 @@ import type {
   PlaylistSchedule,
   PublishedPlaylistSnapshot,
   StoredPlaylist,
-  TomorrowOSMigratableStore
+  TomorrowOSMigratableStore,
+  UploadedAssetRecord,
+  UploadedAssetStorageProvider
 } from "./types.js";
 
 export interface PostgresStoreOptions {
@@ -57,6 +59,20 @@ interface DeviceAssignmentRow {
   published_version: number;
   published_at: string;
   snapshot_json: string;
+}
+
+interface UploadedAssetRow {
+  id: string;
+  sha256: string;
+  storage_provider: string;
+  storage_key: string;
+  url: string;
+  original_filename: string | null;
+  mime_type: string | null;
+  resource_type: string | null;
+  bytes: number | string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 function optionalString(value: string | null): string | undefined {
@@ -157,6 +173,24 @@ export class PostgresStore implements TomorrowOSMigratableStore {
 
       CREATE INDEX IF NOT EXISTS device_assignments_device_order_idx
         ON device_assignments (device_id, sort_order);
+
+      CREATE TABLE IF NOT EXISTS uploaded_assets (
+        id TEXT PRIMARY KEY,
+        sha256 TEXT NOT NULL,
+        storage_provider TEXT NOT NULL,
+        storage_key TEXT NOT NULL,
+        url TEXT NOT NULL,
+        original_filename TEXT,
+        mime_type TEXT,
+        resource_type TEXT,
+        bytes BIGINT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (storage_provider, sha256)
+      );
+
+      CREATE INDEX IF NOT EXISTS uploaded_assets_sha256_idx
+        ON uploaded_assets (sha256);
 
       INSERT INTO schema_migrations (id, name)
         VALUES (1, 'initial_tomorrowos_store')
@@ -441,6 +475,90 @@ export class PostgresStore implements TomorrowOSMigratableStore {
     return result.rows.length > 0;
   }
 
+  async getUploadedAsset(id: string): Promise<UploadedAssetRecord | undefined> {
+    await this.ensureReady();
+    const result = await this.pool.query<UploadedAssetRow>(`
+      SELECT *
+      FROM uploaded_assets
+      WHERE id = $1
+    `, [id]);
+    const row = result.rows[0];
+    return row ? this.mapUploadedAssetRow(row) : undefined;
+  }
+
+  async getUploadedAssetBySha256(
+    sha256: string,
+    storageProvider?: UploadedAssetStorageProvider
+  ): Promise<UploadedAssetRecord | undefined> {
+    await this.ensureReady();
+    const result = await this.pool.query<UploadedAssetRow>(`
+      SELECT *
+      FROM uploaded_assets
+      WHERE sha256 = $1
+        AND ($2::text IS NULL OR storage_provider = $2)
+      LIMIT 1
+    `, [sha256, storageProvider ?? null]);
+    const row = result.rows[0];
+    return row ? this.mapUploadedAssetRow(row) : undefined;
+  }
+
+  async setUploadedAsset(record: UploadedAssetRecord): Promise<void> {
+    await this.ensureReady();
+    await this.pool.query(`
+      INSERT INTO uploaded_assets (
+        id,
+        sha256,
+        storage_provider,
+        storage_key,
+        url,
+        original_filename,
+        mime_type,
+        resource_type,
+        bytes,
+        created_at,
+        updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      ON CONFLICT (id) DO UPDATE SET
+        sha256 = EXCLUDED.sha256,
+        storage_provider = EXCLUDED.storage_provider,
+        storage_key = EXCLUDED.storage_key,
+        url = EXCLUDED.url,
+        original_filename = EXCLUDED.original_filename,
+        mime_type = EXCLUDED.mime_type,
+        resource_type = EXCLUDED.resource_type,
+        bytes = EXCLUDED.bytes,
+        updated_at = EXCLUDED.updated_at
+    `, [
+      record.id,
+      record.sha256,
+      record.storageProvider,
+      record.storageKey,
+      record.url,
+      record.originalFilename ?? null,
+      record.mimeType ?? null,
+      record.resourceType ?? null,
+      record.bytes ?? null,
+      record.createdAt,
+      record.updatedAt
+    ]);
+  }
+
+  async deleteUploadedAsset(id: string): Promise<void> {
+    await this.ensureReady();
+    await this.pool.query("DELETE FROM uploaded_assets WHERE id = $1", [id]);
+  }
+
+  async listUploadedAssets(): Promise<UploadedAssetRecord[]> {
+    await this.ensureReady();
+    const result = await this.pool.query<UploadedAssetRow>(`
+      SELECT *
+      FROM uploaded_assets
+      ORDER BY created_at ASC
+    `);
+    return result.rows.map((row) => this.mapUploadedAssetRow(row));
+  }
+
   async getDeviceAssignments(
     deviceId: string
   ): Promise<DevicePlaylistAssignment[]> {
@@ -540,6 +658,22 @@ export class PostgresStore implements TomorrowOSMigratableStore {
       updatedAt: row.updated_at,
       retired: row.retired,
       retiredAt: optionalString(row.retired_at)
+    };
+  }
+
+  private mapUploadedAssetRow(row: UploadedAssetRow): UploadedAssetRecord {
+    return {
+      id: row.id,
+      sha256: row.sha256,
+      storageProvider: row.storage_provider as UploadedAssetStorageProvider,
+      storageKey: row.storage_key,
+      url: row.url,
+      originalFilename: optionalString(row.original_filename),
+      mimeType: optionalString(row.mime_type),
+      resourceType: optionalString(row.resource_type),
+      bytes: optionalNumber(row.bytes),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
     };
   }
 }

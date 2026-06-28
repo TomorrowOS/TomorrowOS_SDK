@@ -8,6 +8,7 @@ export interface MigrationResult {
   deviceRegistry: number;
   pairedDevices: number;
   playlists: number;
+  uploadedAssets: number;
   deviceAssignments: number;
 }
 
@@ -18,12 +19,14 @@ export async function exportTomorrowOSData(
     pendingCodes,
     deviceRegistry,
     pairedDevices,
-    playlists
+    playlists,
+    uploadedAssets
   ] = await Promise.all([
     store.listPendingCodes(),
     store.listDeviceRegistry(),
     store.listPairedDevices(),
-    store.listPlaylists()
+    store.listPlaylists(),
+    store.listUploadedAssets()
   ]);
 
   const deviceAssignments = await Promise.all(
@@ -38,6 +41,7 @@ export async function exportTomorrowOSData(
     deviceRegistry,
     pairedDevices,
     playlists,
+    uploadedAssets,
     deviceAssignments
   };
 }
@@ -58,6 +62,10 @@ export async function importTomorrowOSData(
     await store.setPlaylist(playlist);
   }
 
+  for (const asset of snapshot.uploadedAssets ?? []) {
+    await store.setUploadedAsset(asset);
+  }
+
   for (const { deviceId, assignments } of snapshot.deviceAssignments) {
     await store.setDeviceAssignments(deviceId, assignments);
   }
@@ -71,6 +79,7 @@ export async function importTomorrowOSData(
     deviceRegistry: snapshot.deviceRegistry.length,
     pairedDevices: snapshot.pairedDevices.length,
     playlists: snapshot.playlists.length,
+    uploadedAssets: snapshot.uploadedAssets?.length ?? 0,
     deviceAssignments: snapshot.deviceAssignments.reduce(
       (total, entry) => total + entry.assignments.length,
       0

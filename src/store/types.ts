@@ -46,8 +46,25 @@ export interface DeviceRegistryEntry {
 
 export interface PlaylistItemRecord {
   url: string;
+  assetId?: string;
   type?: string;
   durationMs?: number;
+}
+
+export type UploadedAssetStorageProvider = "local" | "cloudinary";
+
+export interface UploadedAssetRecord {
+  id: string;
+  sha256: string;
+  storageProvider: UploadedAssetStorageProvider;
+  storageKey: string;
+  url: string;
+  originalFilename?: string;
+  mimeType?: string;
+  resourceType?: string;
+  bytes?: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /** Device-local run window: startDate+start → endDate+end (one continuous period, not daily repeat). */
@@ -112,6 +129,13 @@ export interface TomorrowOSStore {
   getPlaylist(id: string): Promise<StoredPlaylist | undefined>;
   setPlaylist(record: StoredPlaylist): Promise<void>;
   isPlaylistNameTaken(name: string, excludeId?: string): Promise<boolean>;
+  getUploadedAsset(id: string): Promise<UploadedAssetRecord | undefined>;
+  getUploadedAssetBySha256(
+    sha256: string,
+    storageProvider?: UploadedAssetStorageProvider
+  ): Promise<UploadedAssetRecord | undefined>;
+  setUploadedAsset(record: UploadedAssetRecord): Promise<void>;
+  deleteUploadedAsset(id: string): Promise<void>;
   getDeviceAssignments(deviceId: string): Promise<DevicePlaylistAssignment[]>;
   setDeviceAssignments(
     deviceId: string,
@@ -124,6 +148,7 @@ export interface TomorrowOSDataSnapshot {
   deviceRegistry: DeviceRegistryEntry[];
   pairedDevices: PairedDeviceEntry[];
   playlists: StoredPlaylist[];
+  uploadedAssets: UploadedAssetRecord[];
   deviceAssignments: Array<{
     deviceId: string;
     assignments: DevicePlaylistAssignment[];
@@ -133,4 +158,5 @@ export interface TomorrowOSDataSnapshot {
 export interface TomorrowOSMigratableStore extends TomorrowOSStore {
   listPendingCodes(): Promise<PendingCodeEntry[]>;
   listDeviceRegistry(): Promise<DeviceRegistryEntry[]>;
+  listUploadedAssets(): Promise<UploadedAssetRecord[]>;
 }

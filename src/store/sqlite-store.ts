@@ -13,7 +13,9 @@ import type {
   PlaylistSchedule,
   PublishedPlaylistSnapshot,
   StoredPlaylist,
-  TomorrowOSMigratableStore
+  TomorrowOSMigratableStore,
+  UploadedAssetRecord,
+  UploadedAssetStorageProvider
 } from "./types.js";
 
 interface SQLiteStoreOptions {
@@ -64,6 +66,20 @@ interface DeviceAssignmentRow {
   published_version: number;
   published_at: string;
   snapshot_json: string;
+}
+
+interface UploadedAssetRow {
+  id: string;
+  sha256: string;
+  storage_provider: string;
+  storage_key: string;
+  url: string;
+  original_filename: string | null;
+  mime_type: string | null;
+  resource_type: string | null;
+  bytes: number | null;
+  created_at: string;
+  updated_at: string;
 }
 
 const DEFAULT_SQLITE_PATH = path.join(process.cwd(), "data", "tomorrowos.db");
@@ -170,6 +186,24 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
 
       CREATE INDEX IF NOT EXISTS device_assignments_device_order_idx
         ON device_assignments (device_id, sort_order);
+
+      CREATE TABLE IF NOT EXISTS uploaded_assets (
+        id TEXT PRIMARY KEY,
+        sha256 TEXT NOT NULL,
+        storage_provider TEXT NOT NULL,
+        storage_key TEXT NOT NULL,
+        url TEXT NOT NULL,
+        original_filename TEXT,
+        mime_type TEXT,
+        resource_type TEXT,
+        bytes INTEGER,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (storage_provider, sha256)
+      );
+
+      CREATE INDEX IF NOT EXISTS uploaded_assets_sha256_idx
+        ON uploaded_assets (sha256);
 
       INSERT OR IGNORE INTO schema_migrations (id, name)
         VALUES (1, 'initial_tomorrowos_store');
@@ -418,6 +452,87 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
     return !!row;
   }
 
+  async getUploadedAsset(id: string): Promise<UploadedAssetRecord | undefined> {
+    const row = this.db.prepare(`
+      SELECT *
+      FROM uploaded_assets
+      WHERE id = ?
+    `).get(id) as UploadedAssetRow | undefined;
+    return row ? this.mapUploadedAssetRow(row) : undefined;
+  }
+
+  async getUploadedAssetBySha256(
+    sha256: string,
+    storageProvider?: UploadedAssetStorageProvider
+  ): Promise<UploadedAssetRecord | undefined> {
+    const row = this.db.prepare(`
+      SELECT *
+      FROM uploaded_assets
+      WHERE sha256 = ?
+        AND (? IS NULL OR storage_provider = ?)
+      LIMIT 1
+    `).get(
+      sha256,
+      storageProvider ?? null,
+      storageProvider ?? null
+    ) as UploadedAssetRow | undefined;
+    return row ? this.mapUploadedAssetRow(row) : undefined;
+  }
+
+  async setUploadedAsset(record: UploadedAssetRecord): Promise<void> {
+    this.db.prepare(`
+      INSERT INTO uploaded_assets (
+        id,
+        sha256,
+        storage_provider,
+        storage_key,
+        url,
+        original_filename,
+        mime_type,
+        resource_type,
+        bytes,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        sha256 = excluded.sha256,
+        storage_provider = excluded.storage_provider,
+        storage_key = excluded.storage_key,
+        url = excluded.url,
+        original_filename = excluded.original_filename,
+        mime_type = excluded.mime_type,
+        resource_type = excluded.resource_type,
+        bytes = excluded.bytes,
+        updated_at = excluded.updated_at
+    `).run(
+      record.id,
+      record.sha256,
+      record.storageProvider,
+      record.storageKey,
+      record.url,
+      record.originalFilename ?? null,
+      record.mimeType ?? null,
+      record.resourceType ?? null,
+      record.bytes ?? null,
+      record.createdAt,
+      record.updatedAt
+    );
+  }
+
+  async deleteUploadedAsset(id: string): Promise<void> {
+    this.db.prepare("DELETE FROM uploaded_assets WHERE id = ?").run(id);
+  }
+
+  async listUploadedAssets(): Promise<UploadedAssetRecord[]> {
+    const rows = this.db.prepare(`
+      SELECT *
+      FROM uploaded_assets
+      ORDER BY created_at ASC
+    `).all() as UploadedAssetRow[];
+    return rows.map((row) => this.mapUploadedAssetRow(row));
+  }
+
   async getDeviceAssignments(
     deviceId: string
   ): Promise<DevicePlaylistAssignment[]> {
@@ -507,6 +622,22 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
       updatedAt: row.updated_at,
       retired: row.retired === 1,
       retiredAt: optionalString(row.retired_at)
+    };
+  }
+
+  private mapUploadedAssetRow(row: UploadedAssetRow): UploadedAssetRecord {
+    return {
+      id: row.id,
+      sha256: row.sha256,
+      storageProvider: row.storage_provider as UploadedAssetStorageProvider,
+      storageKey: row.storage_key,
+      url: row.url,
+      originalFilename: optionalString(row.original_filename),
+      mimeType: optionalString(row.mime_type),
+      resourceType: optionalString(row.resource_type),
+      bytes: optionalNumber(row.bytes),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
     };
   }
 }

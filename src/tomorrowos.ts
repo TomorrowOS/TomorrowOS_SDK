@@ -15,16 +15,24 @@ import { PlaylistCatalog, type BuiltDevicePolicy } from "./playlist-catalog.js";
 import type {
   DeviceRegistryRecord,
   PairedDeviceRecord,
+  PlaylistItemRecord,
   PlaylistSchedule,
-  TomorrowOSStore
+  TomorrowOSStore,
+  UploadedAssetRecord,
+  UploadedAssetStorageProvider
 } from "./store/types.js";
 import { MemoryStore } from "./store/memory-store.js";
 import {
   resolveBrandLogoPath,
   syncProjectAssetsToStaticRoot
 } from "./brand-assets.js";
+import {
+  deleteCloudinaryAsset,
+  resolveCloudinaryConfig,
+  uploadBufferToCloudinary
+} from "./cloudinary-storage.js";
 import { probeVideoDurationMs } from "./media-probe.js";
-import { storeUploadIfNeeded } from "./upload-storage.js";
+import { contentHashHex, storeUploadIfNeeded } from "./upload-storage.js";
 
 export interface TomorrowOSBrand {
   name?: string;
@@ -256,6 +264,21 @@ async function readRawBody(
 function sanitizeUploadFilename(name: string): string {
   const base = path.basename(String(name || "upload")).replace(/[^\w.\-()+ ]/g, "_");
   return base.slice(0, 180) || "upload";
+}
+
+function inferResourceType(mimeType: string | undefined, filename: string): string {
+  const mime = String(mimeType || "").toLowerCase();
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("video/")) return "video";
+
+  const ext = path.extname(filename).toLowerCase();
+  if ([".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"].includes(ext)) {
+    return "image";
+  }
+  if ([".mp4", ".mov", ".m4v", ".webm", ".avi", ".mkv"].includes(ext)) {
+    return "video";
+  }
+  return "raw";
 }
 
 function sendJson(
@@ -812,21 +835,25 @@ export class TomorrowOS extends EventEmitter {
 
       const rawName = url.searchParams.get("filename") || "upload";
       const safeName = sanitizeUploadFilename(rawName);
-      const uploadsDir = path.join(path.resolve(this.staticRoot), "uploads");
-      await fs.mkdir(uploadsDir, { recursive: true });
-      const { storedName, deduplicated, contentHash } = await storeUploadIfNeeded(
-        uploadsDir,
+      const mimeType =
+        typeof req.headers["content-type"] === "string"
+          ? req.headers["content-type"]
+          : undefined;
+      const { asset, deduplicated } = await this.storeUploadedMediaAsset(
         body,
-        safeName
+        safeName,
+        mimeType
       );
 
       const durationMs = probeVideoDurationMs(body, safeName);
       const payload: Record<string, unknown> = {
         status: "success",
-        url: `/uploads/${storedName}`,
-        filename: storedName,
-        size: body.length,
-        contentHash,
+        url: asset.url,
+        assetId: asset.id,
+        filename: asset.storageProvider === "local" ? asset.storageKey : safeName,
+        size: asset.bytes ?? body.length,
+        contentHash: asset.sha256,
+        storageProvider: asset.storageProvider,
         deduplicated
       };
       if (durationMs != null) payload.durationMs = durationMs;
@@ -835,6 +862,149 @@ export class TomorrowOS extends EventEmitter {
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Upload failed";
       sendJson(res, 400, { status: "failed", error: msg });
+    }
+  }
+
+  private async storeUploadedMediaAsset(
+    body: Buffer,
+    safeName: string,
+    mimeType?: string
+  ): Promise<{ asset: UploadedAssetRecord; deduplicated: boolean }> {
+    const sha256 = contentHashHex(body);
+    const cloudinaryConfig = resolveCloudinaryConfig();
+    const storageProvider: UploadedAssetStorageProvider = cloudinaryConfig
+      ? "cloudinary"
+      : "local";
+
+    const existing = await this.store.getUploadedAssetBySha256(
+      sha256,
+      storageProvider
+    );
+    if (existing) {
+      if (existing.storageProvider === "cloudinary") {
+        return { asset: existing, deduplicated: true };
+      }
+
+      const existingLocalPath = path.join(
+        path.resolve(this.staticRoot || "."),
+        "uploads",
+        existing.storageKey
+      );
+      try {
+        const stat = await fs.stat(existingLocalPath);
+        if (stat.size === body.length) {
+          return { asset: existing, deduplicated: true };
+        }
+      } catch {
+        // Local file is missing; rewrite it below and update this asset record.
+      }
+    }
+
+    const now = new Date().toISOString();
+    const resourceType = inferResourceType(mimeType, safeName);
+
+    if (cloudinaryConfig) {
+      const uploaded = await uploadBufferToCloudinary(body, {
+        config: cloudinaryConfig,
+        publicId: sha256,
+        filename: safeName
+      });
+      const asset: UploadedAssetRecord = {
+        id: randomUUID(),
+        sha256,
+        storageProvider: "cloudinary",
+        storageKey: uploaded.publicId,
+        url: uploaded.secureUrl,
+        originalFilename: safeName,
+        mimeType,
+        resourceType: uploaded.resourceType || resourceType,
+        bytes: uploaded.bytes ?? body.length,
+        createdAt: now,
+        updatedAt: now
+      };
+      await this.store.setUploadedAsset(asset);
+      return { asset, deduplicated: false };
+    }
+
+    const uploadsDir = path.join(path.resolve(this.staticRoot || "."), "uploads");
+    await fs.mkdir(uploadsDir, { recursive: true });
+    const { storedName, deduplicated } = await storeUploadIfNeeded(
+      uploadsDir,
+      body,
+      safeName
+    );
+    const asset: UploadedAssetRecord = {
+      id: existing?.id ?? randomUUID(),
+      sha256,
+      storageProvider: "local",
+      storageKey: storedName,
+      url: `/uploads/${storedName}`,
+      originalFilename: safeName,
+      mimeType,
+      resourceType,
+      bytes: body.length,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now
+    };
+    await this.store.setUploadedAsset(asset);
+    return { asset, deduplicated };
+  }
+
+  private getAssetIdsFromItems(items: PlaylistItemRecord[] | undefined): Set<string> {
+    const ids = new Set<string>();
+    for (const item of items ?? []) {
+      const assetId = String(item.assetId || "").trim();
+      if (assetId) ids.add(assetId);
+    }
+    return ids;
+  }
+
+  private async isUploadedAssetReferenced(assetId: string): Promise<boolean> {
+    const playlists = await this.store.listPlaylists();
+    return playlists.some((playlist) => {
+      if (playlist.retired) return false;
+      return playlist.items.some((item) => item.assetId === assetId);
+    });
+  }
+
+  private async releaseRemovedPlaylistAssets(
+    previousItems: PlaylistItemRecord[] | undefined,
+    nextItems: PlaylistItemRecord[] | undefined
+  ): Promise<void> {
+    const previous = this.getAssetIdsFromItems(previousItems);
+    const next = this.getAssetIdsFromItems(nextItems);
+    const removed = [...previous].filter((assetId) => !next.has(assetId));
+
+    for (const assetId of removed) {
+      await this.deleteUploadedAssetIfUnreferenced(assetId);
+    }
+  }
+
+  private async deleteUploadedAssetIfUnreferenced(assetId: string): Promise<void> {
+    try {
+      if (await this.isUploadedAssetReferenced(assetId)) return;
+
+      const asset = await this.store.getUploadedAsset(assetId);
+      if (!asset) return;
+
+      if (asset.storageProvider === "cloudinary") {
+        const cloudinaryConfig = resolveCloudinaryConfig();
+        if (!cloudinaryConfig) {
+          console.warn(
+            `[TomorrowOS] Cloudinary config missing; cannot delete asset ${asset.id}.`
+          );
+          return;
+        }
+        await deleteCloudinaryAsset(
+          cloudinaryConfig,
+          asset.storageKey,
+          asset.resourceType || "image"
+        );
+      }
+
+      await this.store.deleteUploadedAsset(asset.id);
+    } catch (err) {
+      console.warn("[TomorrowOS] uploaded asset cleanup failed:", err);
     }
   }
 
@@ -970,15 +1140,23 @@ export class TomorrowOS extends EventEmitter {
       if (req.method === "POST" && pathname === "/playlists") {
         const body = (await readJsonBody(req)) as Record<string, unknown>;
         try {
+          const playlistId = typeof body.id === "string" ? body.id : undefined;
+          const previous = playlistId
+            ? await this.store.getPlaylist(playlistId)
+            : undefined;
+          const items = Array.isArray(body.items)
+            ? (body.items as PlaylistItemRecord[])
+            : [];
           const saved = await this.playlists.savePlaylist({
-            id: typeof body.id === "string" ? body.id : undefined,
+            id: playlistId,
             name: String(body.name ?? ""),
             schedule:
               body.schedule && typeof body.schedule === "object"
                 ? (body.schedule as PlaylistSchedule)
                 : undefined,
-            items: Array.isArray(body.items) ? (body.items as never[]) : []
+            items
           });
+          await this.releaseRemovedPlaylistAssets(previous?.items, saved.items);
           const paired = await this.store.listPairedDevices();
           const deployResults: Array<{
             deviceId: string;

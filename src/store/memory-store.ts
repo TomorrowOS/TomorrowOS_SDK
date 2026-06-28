@@ -5,7 +5,8 @@ import type {
   PairedDeviceRecord,
   PendingCodeRecord,
   StoredPlaylist,
-  TomorrowOSStore
+  TomorrowOSStore,
+  UploadedAssetRecord
 } from "./types.js";
 
 /**
@@ -18,6 +19,7 @@ export class MemoryStore implements TomorrowOSStore {
   private readonly codeToDeviceId = new Map<string, string>();
   private readonly pairedDevices = new Map<string, PairedDeviceRecord>();
   private readonly playlists = new Map<string, StoredPlaylist>();
+  private readonly uploadedAssets = new Map<string, UploadedAssetRecord>();
   private readonly deviceAssignments = new Map<string, DevicePlaylistAssignment[]>();
 
   async setPendingCode(code: string, record: PendingCodeRecord): Promise<void> {
@@ -104,6 +106,33 @@ export class MemoryStore implements TomorrowOSStore {
       if (playlist.name.trim().toLowerCase() === target) return true;
     }
     return false;
+  }
+
+  async getUploadedAsset(id: string): Promise<UploadedAssetRecord | undefined> {
+    return this.uploadedAssets.get(id);
+  }
+
+  async getUploadedAssetBySha256(
+    sha256: string,
+    storageProvider?: UploadedAssetRecord["storageProvider"]
+  ): Promise<UploadedAssetRecord | undefined> {
+    for (const asset of this.uploadedAssets.values()) {
+      if (
+        asset.sha256 === sha256 &&
+        (!storageProvider || asset.storageProvider === storageProvider)
+      ) {
+        return asset;
+      }
+    }
+    return undefined;
+  }
+
+  async setUploadedAsset(record: UploadedAssetRecord): Promise<void> {
+    this.uploadedAssets.set(record.id, record);
+  }
+
+  async deleteUploadedAsset(id: string): Promise<void> {
+    this.uploadedAssets.delete(id);
   }
 
   async getDeviceAssignments(

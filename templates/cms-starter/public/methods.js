@@ -12,7 +12,7 @@ let selectedPlaylistId = null;
 /** True while creating a new playlist locally (assets allowed before Save). */
 let playlistDraftActive = false;
 
-/** @type {{ id: string, url: string, name: string, type: string, durationMs: number }[]} */
+/** @type {{ id: string, assetId?: string, url: string, name: string, type: string, durationMs: number }[]} */
 let editorItems = [];
 
 /** @type {string|null} */
@@ -429,6 +429,7 @@ function loadEditorFromSelection() {
   loadScheduleIntoForm(pl.schedule);
   editorItems = (pl.items || []).map((item) => ({
     id: crypto.randomUUID(),
+    assetId: item.assetId,
     url: item.url,
     name: item.url?.split("/").pop() || "asset",
     type: item.type || "image",
@@ -539,6 +540,7 @@ async function saveCurrentPlaylist() {
   try {
     items = editorItems.map((item) => ({
       url: absoluteMediaUrl(item.url),
+      assetId: item.assetId,
       type: item.type,
       durationMs: item.durationMs
     }));
@@ -949,6 +951,7 @@ async function addAssetFromFile(file, queueIndex, queueTotal) {
   const durationMs = await resolveVideoDurationMs(file, type, data);
   editorItems.push({
     id: crypto.randomUUID(),
+    assetId: data.assetId,
     url: data.url,
     name: file.name,
     type,
