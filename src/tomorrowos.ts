@@ -77,6 +77,36 @@ interface DeviceHelloMeta {
   serialNumber?: string;
 }
 
+function normalizeDevicePlatform(
+  platform?: string | null,
+  system?: string | null
+): string | undefined {
+  const explicit = typeof platform === "string" ? platform.trim().toLowerCase() : "";
+  if (explicit) return explicit;
+
+  const systemLabel = typeof system === "string" ? system.toLowerCase() : "";
+  if (systemLabel.includes("brightsign")) return "brightsign";
+  if (systemLabel.includes("tizen")) return "tizen";
+  return undefined;
+}
+
+function formatDeviceSystemForFirmware(
+  platform: string | undefined,
+  firmware: string | undefined,
+  existingSystem?: string | null
+): string | undefined {
+  const fw = typeof firmware === "string" ? firmware.trim() : "";
+  if (!fw) return existingSystem ?? undefined;
+
+  if (platform === "brightsign") return "BrightSignOS";
+  if (platform === "tizen") return "Tizen";
+
+  const base = typeof existingSystem === "string"
+    ? existingSystem.replace(/\s*\([^)]*\)\s*$/, "").trim()
+    : "";
+  return base ? `${base}` : fw;
+}
+
 export interface DeviceListItem {
   deviceId: string;
   /** Permanent 6-character alphanumeric pairing code (same after unpair). */
@@ -618,14 +648,17 @@ export class TomorrowOS extends EventEmitter {
         typeof result.data.firmware === "string"
           ? result.data.firmware
           : undefined;
+      const platform = normalizeDevicePlatform(existing.platform, existing.system);
 
       await this.store.setPairedDevice(deviceId, {
         ...existing,
         deviceName: model ?? existing.deviceName,
-        system: firmware
-          ? `Tizen (${firmware})`
-          : existing.system,
-        platform: existing.platform ?? "tizen"
+        system: formatDeviceSystemForFirmware(
+          platform,
+          firmware,
+          existing.system
+        ),
+        platform: platform ?? existing.platform
       });
     } catch {
       /* ignore — panel still shows hello metadata */
