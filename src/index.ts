@@ -24,11 +24,14 @@ export type {
 export { PlaylistCatalog } from "./playlist-catalog.js";
 export type { BuiltDevicePolicy, SavePlaylistInput } from "./playlist-catalog.js";
 export {
+  DEFAULT_PAIRING_CODE_SECRET,
+  generateDeterministicPairingCode,
   generateRandomPairingCode,
   isValidPairingCodeFormat,
   normalizePairingCode,
   PAIRING_CODE_ALPHABET,
-  PAIRING_CODE_LENGTH
+  PAIRING_CODE_LENGTH,
+  resolvePairingCodeSecret
 } from "./pairing-code.js";
 export { MemoryStore } from "./store/memory-store.js";
 export { PostgresStore } from "./store/postgres-store.js";

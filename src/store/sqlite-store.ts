@@ -44,6 +44,7 @@ interface PairedDeviceRow {
   device_name: string | null;
   platform: string | null;
   system: string | null;
+  player_version: string | null;
   last_boot_at: string | null;
   last_online_at: string | null;
   last_offline_at: string | null;
@@ -153,6 +154,7 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
         device_name TEXT,
         platform TEXT,
         system TEXT,
+        player_version TEXT,
         last_boot_at TEXT,
         last_online_at TEXT,
         last_offline_at TEXT,
@@ -208,6 +210,16 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
       INSERT OR IGNORE INTO schema_migrations (id, name)
         VALUES (1, 'initial_tomorrowos_store');
     `);
+    this.addColumnIfMissing("paired_devices", "player_version TEXT");
+  }
+
+  private addColumnIfMissing(table: string, columnDefinition: string): void {
+    try {
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${columnDefinition}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message.toLowerCase() : "";
+      if (!msg.includes("duplicate column")) throw err;
+    }
   }
 
   close(): void {
@@ -330,18 +342,20 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
         device_name,
         platform,
         system,
+        player_version,
         last_boot_at,
         last_online_at,
         last_offline_at,
         last_policy_push_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(device_id) DO UPDATE SET
         pairing_token = excluded.pairing_token,
         paired_at = excluded.paired_at,
         device_name = excluded.device_name,
         platform = excluded.platform,
         system = excluded.system,
+        player_version = excluded.player_version,
         last_boot_at = excluded.last_boot_at,
         last_online_at = excluded.last_online_at,
         last_offline_at = excluded.last_offline_at,
@@ -353,6 +367,7 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
       record.deviceName ?? null,
       record.platform ?? null,
       record.system ?? null,
+      record.playerVersion ?? null,
       record.lastBootAt ?? null,
       record.lastOnlineAt ?? null,
       record.lastOfflineAt ?? null,
@@ -605,6 +620,7 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
       deviceName: optionalString(row.device_name),
       platform: optionalString(row.platform),
       system: optionalString(row.system),
+      playerVersion: optionalString(row.player_version),
       lastBootAt: optionalString(row.last_boot_at),
       lastOnlineAt: optionalString(row.last_online_at),
       lastOfflineAt: optionalString(row.last_offline_at),

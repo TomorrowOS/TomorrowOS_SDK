@@ -37,6 +37,7 @@ interface PairedDeviceRow {
   device_name: string | null;
   platform: string | null;
   system: string | null;
+  player_version: string | null;
   last_boot_at: string | null;
   last_online_at: string | null;
   last_offline_at: string | null;
@@ -140,6 +141,7 @@ export class PostgresStore implements TomorrowOSMigratableStore {
         device_name TEXT,
         platform TEXT,
         system TEXT,
+        player_version TEXT,
         last_boot_at TEXT,
         last_online_at TEXT,
         last_offline_at TEXT,
@@ -195,6 +197,9 @@ export class PostgresStore implements TomorrowOSMigratableStore {
       INSERT INTO schema_migrations (id, name)
         VALUES (1, 'initial_tomorrowos_store')
         ON CONFLICT (id) DO NOTHING;
+
+      ALTER TABLE paired_devices
+        ADD COLUMN IF NOT EXISTS player_version TEXT;
     `);
   }
 
@@ -342,18 +347,20 @@ export class PostgresStore implements TomorrowOSMigratableStore {
         device_name,
         platform,
         system,
+        player_version,
         last_boot_at,
         last_online_at,
         last_offline_at,
         last_policy_push_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       ON CONFLICT (device_id) DO UPDATE SET
         pairing_token = EXCLUDED.pairing_token,
         paired_at = EXCLUDED.paired_at,
         device_name = EXCLUDED.device_name,
         platform = EXCLUDED.platform,
         system = EXCLUDED.system,
+        player_version = EXCLUDED.player_version,
         last_boot_at = EXCLUDED.last_boot_at,
         last_online_at = EXCLUDED.last_online_at,
         last_offline_at = EXCLUDED.last_offline_at,
@@ -365,6 +372,7 @@ export class PostgresStore implements TomorrowOSMigratableStore {
       record.deviceName ?? null,
       record.platform ?? null,
       record.system ?? null,
+      record.playerVersion ?? null,
       record.lastBootAt ?? null,
       record.lastOnlineAt ?? null,
       record.lastOfflineAt ?? null,
@@ -641,6 +649,7 @@ export class PostgresStore implements TomorrowOSMigratableStore {
       deviceName: optionalString(row.device_name),
       platform: optionalString(row.platform),
       system: optionalString(row.system),
+      playerVersion: optionalString(row.player_version),
       lastBootAt: optionalString(row.last_boot_at),
       lastOnlineAt: optionalString(row.last_online_at),
       lastOfflineAt: optionalString(row.last_offline_at),

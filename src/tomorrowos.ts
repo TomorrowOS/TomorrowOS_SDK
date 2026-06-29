@@ -7,9 +7,11 @@ import type { Duplex } from "stream";
 import { WebSocket, WebSocketServer } from "ws";
 
 import {
+  generateDeterministicPairingCode,
   generateRandomPairingCode,
   isValidPairingCodeFormat,
-  normalizePairingCode
+  normalizePairingCode,
+  resolvePairingCodeSecret
 } from "./pairing-code.js";
 import { PlaylistCatalog, type BuiltDevicePolicy } from "./playlist-catalog.js";
 import type {
@@ -135,6 +137,7 @@ export interface DeviceListItem {
   deviceName: string | null;
   platform: string | null;
   system: string | null;
+  playerVersion: string | null;
   serialNumber: string | null;
   pairedAt: string;
   lastBootAt: string | null;
@@ -405,6 +408,7 @@ export class TomorrowOS extends EventEmitter {
       deviceName: meta?.deviceName,
       platform: meta?.platform,
       system: meta?.system,
+      playerVersion: meta?.playerVersion,
       ...(lastBootAt ? { lastBootAt } : {}),
       lastOnlineAt: this.isDeviceConnected(deviceId) ? now : undefined,
       lastOfflineAt: this.isDeviceConnected(deviceId) ? undefined : now
@@ -504,6 +508,7 @@ export class TomorrowOS extends EventEmitter {
         deviceName: record.deviceName ?? null,
         platform: record.platform ?? null,
         system: record.system ?? null,
+        playerVersion: record.playerVersion ?? null,
         serialNumber: reg?.serialNumber ?? deviceId,
         pairedAt: record.pairedAt,
         lastBootAt: record.lastBootAt ?? null,
@@ -572,8 +577,13 @@ export class TomorrowOS extends EventEmitter {
       return existing.permanentPairingCode;
     }
 
+    const stableIdentity = String(serialNumber || deviceId || "").trim();
+    const secret = resolvePairingCodeSecret();
+
     for (let attempt = 0; attempt < 32; attempt += 1) {
-      const code = generateRandomPairingCode();
+      const code = stableIdentity
+        ? generateDeterministicPairingCode(stableIdentity, { secret, attempt })
+        : generateRandomPairingCode();
       const collision = await this.store.getDeviceRegistryByCode(code);
       if (collision && collision.deviceId !== deviceId) continue;
 
@@ -618,6 +628,9 @@ export class TomorrowOS extends EventEmitter {
         platform,
         typeof msg.system === "string" ? msg.system : existing.system
       ) ?? existing.system;
+    const playerVersion =
+      (typeof msg.playerVersion === "string" ? msg.playerVersion : undefined) ??
+      existing.playerVersion;
 
     await this.store.setPairedDevice(deviceId, {
       ...existing,
@@ -626,6 +639,7 @@ export class TomorrowOS extends EventEmitter {
         existing.deviceName,
       platform,
       system,
+      playerVersion,
       ...(lastBootAt ? { lastBootAt } : {}),
       lastOnlineAt: now,
       lastOfflineAt: existing.lastOfflineAt

@@ -695,6 +695,7 @@ function renderDeviceCards() {
     const rows = [
       ["Device ID", device.deviceId],
       ["System", device.system || device.platform || "—"],
+      ["Player version", device.playerVersion || "—"],
       ["Device online", formatDeviceOnlineLabel(device)],
       ["Last boot", formatDateTimeSeconds(device.lastBootAt)],
       ["Latest push", formatDateTimeSeconds(device.lastPolicyPushAt)],

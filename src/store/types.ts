@@ -23,6 +23,7 @@ export interface PairedDeviceRecord {
   deviceName?: string;
   platform?: string;
   system?: string;
+  playerVersion?: string;
   lastBootAt?: string;
   lastOnlineAt?: string;
   lastOfflineAt?: string;
