@@ -166,6 +166,23 @@ export interface DeviceLogEntry {
   details?: unknown;
 }
 
+export interface DeviceScreenshotInfo {
+  deviceId: string;
+  url: string;
+  capturedAt: string;
+  mimeType: string;
+  width?: number;
+  height?: number;
+}
+
+interface DeviceScreenshotPayload {
+  mimeType?: string;
+  dataBase64?: string;
+  capturedAt?: string;
+  width?: number;
+  height?: number;
+}
+
 function formatDurationMs(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return "0s";
   const totalSec = Math.floor(ms / 1000);
@@ -279,6 +296,10 @@ async function readRawBody(
 function sanitizeUploadFilename(name: string): string {
   const base = path.basename(String(name || "upload")).replace(/[^\w.\-()+ ]/g, "_");
   return base.slice(0, 180) || "upload";
+}
+
+function sanitizeStorageSegment(value: string): string {
+  return String(value || "item").replace(/[^\w.\-]+/g, "_").slice(0, 160) || "item";
 }
 
 function inferResourceType(mimeType: string | undefined, filename: string): string {
@@ -808,7 +829,9 @@ export class TomorrowOS extends EventEmitter {
       }
       this.staticIndexFile = idx;
       const uploadsDir = path.join(path.resolve(this.staticRoot), "uploads");
+      const screenshotsDir = path.join(path.resolve(this.staticRoot), "screenshots");
       void fs.mkdir(uploadsDir, { recursive: true });
+      void fs.mkdir(screenshotsDir, { recursive: true });
       void this.refreshResolvedBrandLogo();
     } else {
       this.staticIndexFile = "index.html";
@@ -1107,6 +1130,93 @@ export class TomorrowOS extends EventEmitter {
     }
   }
 
+  private getScreenshotsDir(): string {
+    if (!this.staticRoot) {
+      throw new Error("Screenshot storage requires listen({ staticRoot })");
+    }
+    return path.join(path.resolve(this.staticRoot), "screenshots");
+  }
+
+  private screenshotBaseName(deviceId: string): string {
+    return sanitizeStorageSegment(deviceId);
+  }
+
+  private screenshotExtension(mimeType: string): string {
+    const normalized = mimeType.toLowerCase();
+    if (normalized === "image/png") return ".png";
+    if (normalized === "image/webp") return ".webp";
+    return ".jpg";
+  }
+
+  private async saveDeviceScreenshot(
+    deviceId: string,
+    payload: DeviceScreenshotPayload
+  ): Promise<DeviceScreenshotInfo> {
+    const mimeType =
+      typeof payload.mimeType === "string" && payload.mimeType.startsWith("image/")
+        ? payload.mimeType
+        : "image/jpeg";
+    const dataBase64 =
+      typeof payload.dataBase64 === "string" ? payload.dataBase64 : "";
+    if (!dataBase64.trim()) {
+      throw new Error("Screenshot payload missing dataBase64");
+    }
+
+    const dir = this.getScreenshotsDir();
+    await fs.mkdir(dir, { recursive: true });
+    const base = this.screenshotBaseName(deviceId);
+    const ext = this.screenshotExtension(mimeType);
+    const filename = `${base}${ext}`;
+    const filePath = path.join(dir, filename);
+    const metaPath = path.join(dir, `${base}.json`);
+    const capturedAt =
+      typeof payload.capturedAt === "string" && payload.capturedAt.trim()
+        ? payload.capturedAt
+        : new Date().toISOString();
+
+    await fs.writeFile(filePath, Buffer.from(dataBase64, "base64"));
+    const info: DeviceScreenshotInfo = {
+      deviceId,
+      url: `/screenshots/${filename}`,
+      capturedAt,
+      mimeType,
+      width: typeof payload.width === "number" ? payload.width : undefined,
+      height: typeof payload.height === "number" ? payload.height : undefined
+    };
+    await fs.writeFile(metaPath, JSON.stringify(info, null, 2));
+    return info;
+  }
+
+  private async getLatestDeviceScreenshot(
+    deviceId: string
+  ): Promise<DeviceScreenshotInfo | null> {
+    const dir = this.getScreenshotsDir();
+    const base = this.screenshotBaseName(deviceId);
+    const metaPath = path.join(dir, `${base}.json`);
+    try {
+      const raw = await fs.readFile(metaPath, "utf8");
+      const parsed = JSON.parse(raw) as DeviceScreenshotInfo;
+      if (!parsed || typeof parsed.url !== "string") return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  private async captureDeviceScreenshot(deviceId: string): Promise<DeviceScreenshotInfo> {
+    const result = await this.sendDeviceCommand(deviceId, "device.captureScreen", {});
+    if (result.status === "failed") {
+      throw new Error(String(result.error ?? "Screenshot failed"));
+    }
+
+    const data = (result.data ?? {}) as Record<string, unknown>;
+    const screenshot =
+      data.screenshot && typeof data.screenshot === "object"
+        ? (data.screenshot as DeviceScreenshotPayload)
+        : (data as DeviceScreenshotPayload);
+    return this.saveDeviceScreenshot(deviceId, screenshot);
+  }
+
   private async handleHttp(
     req: http.IncomingMessage,
     res: http.ServerResponse
@@ -1272,6 +1382,36 @@ export class TomorrowOS extends EventEmitter {
       if (req.method === "GET" && deviceLogsGet) {
         const deviceId = decodeURIComponent(deviceLogsGet[1]);
         sendJson(res, 200, { status: "success", logs: this.getDeviceLogs(deviceId) });
+        return;
+      }
+
+      const deviceScreenshot = /^\/device\/([^/]+)\/screenshot$/.exec(pathname);
+      if (req.method === "POST" && deviceScreenshot) {
+        const deviceId = decodeURIComponent(deviceScreenshot[1]);
+        try {
+          const screenshot = await this.captureDeviceScreenshot(deviceId);
+          sendJson(res, 200, { status: "success", screenshot });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "Screenshot failed";
+          sendJson(res, 400, { status: "failed", error: msg });
+        }
+        return;
+      }
+
+      const latestScreenshot = /^\/device\/([^/]+)\/screenshot\/latest$/.exec(pathname);
+      if (req.method === "GET" && latestScreenshot) {
+        const deviceId = decodeURIComponent(latestScreenshot[1]);
+        try {
+          const screenshot = await this.getLatestDeviceScreenshot(deviceId);
+          if (!screenshot) {
+            sendJson(res, 404, { status: "failed", error: "No screenshot captured yet" });
+            return;
+          }
+          sendJson(res, 200, { status: "success", screenshot });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "Screenshot lookup failed";
+          sendJson(res, 400, { status: "failed", error: msg });
+        }
         return;
       }
 

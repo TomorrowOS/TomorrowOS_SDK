@@ -1,6 +1,7 @@
 export { TomorrowOS } from "./tomorrowos.js";
 export type {
   DeviceListItem,
+  DeviceScreenshotInfo,
   ListenOptions,
   TomorrowOSBrand,
   TomorrowOSOptions

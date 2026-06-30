@@ -136,6 +136,18 @@
       </div>
     </div>
 
+    <div id="screenshotModal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-backdrop" data-close-screenshot-modal="1"></div>
+      <div class="modal-card screenshot-modal-card">
+        <h2>Latest screenshot</h2>
+        <p class="hint" id="screenshotModalHint">No screenshot loaded.</p>
+        <img id="screenshotModalImage" class="screenshot-preview hidden" alt="Latest device screenshot" />
+        <div class="modal-actions">
+          <button type="button" data-close-screenshot-modal="1">Close</button>
+        </div>
+      </div>
+    </div>
+
     <script src="./methods.js" defer></script>
   </body>
 </html>

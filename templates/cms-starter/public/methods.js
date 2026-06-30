@@ -750,6 +750,16 @@ function renderDeviceCards() {
     logsBtn.textContent = "Logs";
     logsBtn.addEventListener("click", () => viewDeviceLogs(device.deviceId));
 
+    const screenshotBtn = document.createElement("button");
+    screenshotBtn.type = "button";
+    screenshotBtn.textContent = "Screenshot";
+    screenshotBtn.addEventListener("click", () => captureDeviceScreenshot(device.deviceId));
+
+    const latestScreenshotBtn = document.createElement("button");
+    latestScreenshotBtn.type = "button";
+    latestScreenshotBtn.textContent = "Last screen";
+    latestScreenshotBtn.addEventListener("click", () => viewLatestScreenshot(device.deviceId));
+
     const unpairBtn = document.createElement("button");
     unpairBtn.type = "button";
     unpairBtn.className = "danger";
@@ -762,6 +772,8 @@ function renderDeviceCards() {
     actions.appendChild(rebootBtn);
     actions.appendChild(clearBtn);
     actions.appendChild(logsBtn);
+    actions.appendChild(screenshotBtn);
+    actions.appendChild(latestScreenshotBtn);
     actions.appendChild(unpairBtn);
 
     card.appendChild(header);
@@ -1076,6 +1088,57 @@ async function viewDeviceLogs(deviceId) {
   }
 }
 
+async function captureDeviceScreenshot(deviceId) {
+  if (!deviceId) return;
+  const res = await fetch(`/device/${encodeURIComponent(deviceId)}/screenshot`, {
+    method: "POST"
+  });
+  const data = await res.json();
+  showResult({ deviceId, screenshot: data });
+  if (!res.ok) {
+    alert(data.error || "Screenshot failed");
+    return;
+  }
+  const capturedAt = formatDateTimeSeconds(data.screenshot?.capturedAt);
+  alert(`Screenshot captured successfully${capturedAt ? ` at ${capturedAt}` : ""}.`);
+}
+
+async function viewLatestScreenshot(deviceId) {
+  if (!deviceId) return;
+  const res = await fetch(`/device/${encodeURIComponent(deviceId)}/screenshot/latest`);
+  const data = await res.json();
+  showResult({ deviceId, latestScreenshot: data });
+  if (!res.ok) {
+    alert(data.error || "No screenshot available");
+    return;
+  }
+  openScreenshotModal(deviceId, data.screenshot);
+}
+
+function openScreenshotModal(deviceId, screenshot) {
+  const modal = document.getElementById("screenshotModal");
+  const hint = document.getElementById("screenshotModalHint");
+  const img = document.getElementById("screenshotModalImage");
+  if (!modal || !hint || !img || !screenshot) return;
+
+  const capturedAt = formatDateTimeSeconds(screenshot.capturedAt);
+  hint.textContent = `Device ${deviceId} — captured at ${capturedAt}`;
+  const cacheBust = encodeURIComponent(screenshot.capturedAt || Date.now());
+  img.src = `${screenshot.url}${screenshot.url.includes("?") ? "&" : "?"}v=${cacheBust}`;
+  img.classList.remove("hidden");
+  modal.classList.remove("hidden");
+}
+
+function closeScreenshotModal() {
+  const modal = document.getElementById("screenshotModal");
+  const img = document.getElementById("screenshotModalImage");
+  if (img) {
+    img.removeAttribute("src");
+    img.classList.add("hidden");
+  }
+  modal?.classList.add("hidden");
+}
+
 function startDevicePolling() {
   if (devicePollTimer) clearInterval(devicePollTimer);
   void fetchDevices();
@@ -1103,6 +1166,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.querySelectorAll("[data-close-modal]").forEach((el) => {
     el.addEventListener("click", closePublishModal);
+  });
+  document.querySelectorAll("[data-close-screenshot-modal]").forEach((el) => {
+    el.addEventListener("click", closeScreenshotModal);
   });
 
   document.getElementById("addAssetBtn")?.addEventListener("click", () => {
