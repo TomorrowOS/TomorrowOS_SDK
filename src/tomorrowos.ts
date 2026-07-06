@@ -153,6 +153,12 @@ export interface DeviceListItem {
     name: string;
     version: number;
     publishedAt: string;
+    schedule?: {
+      startDate?: string;
+      endDate?: string;
+      start?: string;
+      end?: string;
+    };
   }>;
   latestErrorAt: string | null;
   latestErrorMessage: string | null;
@@ -523,7 +529,8 @@ export class TomorrowOS extends EventEmitter {
           playlistId: a.playlistId,
           name: a.snapshot.name,
           version: a.publishedVersion,
-          publishedAt: a.publishedAt
+          publishedAt: a.publishedAt,
+          schedule: a.snapshot.schedule
         })),
         connected,
         deviceName: record.deviceName ?? null,
@@ -1792,6 +1799,7 @@ export class TomorrowOS extends EventEmitter {
         if (level === "error") {
           console.error(`[TomorrowOS][device-log][${deviceId}] ${message}`);
         }
+        return;
       }
     });
 

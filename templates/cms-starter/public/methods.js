@@ -503,6 +503,58 @@ function loadScheduleIntoForm(schedule) {
   document.getElementById("scheduleEndTime").value = s.end || "";
 }
 
+function parseScheduleDateTimeMs(dateStr, timeStr, defaultTime) {
+  const date = String(dateStr || "").trim();
+  if (!date) return null;
+  const time = String(timeStr || "").trim() || defaultTime;
+  const value = new Date(`${date}T${time}:00`);
+  const ms = value.getTime();
+  return Number.isNaN(ms) ? null : ms;
+}
+
+function getPublishedPlaylistStartMs(playlist) {
+  const schedule = playlist?.schedule;
+  if (!schedule) return null;
+  return parseScheduleDateTimeMs(schedule.startDate, schedule.start, "00:00");
+}
+
+function getPublishedPlaylistEndMs(playlist) {
+  const schedule = playlist?.schedule;
+  if (!schedule) return null;
+  return parseScheduleDateTimeMs(schedule.endDate, schedule.end, "23:59");
+}
+
+function isPublishedPlaylistActiveNow(playlist, now = new Date()) {
+  const schedule = playlist?.schedule;
+  if (!schedule) return true;
+  const nowMs = now.getTime();
+  const startMs = getPublishedPlaylistStartMs(playlist);
+  const endMs = getPublishedPlaylistEndMs(playlist);
+  if (startMs !== null && nowMs < startMs) return false;
+  if (endMs !== null && nowMs >= endMs) return false;
+  return true;
+}
+
+function pickScheduledPlaylistForIndicator(playlists, now = new Date()) {
+  const active = (Array.isArray(playlists) ? playlists : []).filter((playlist) =>
+    isPublishedPlaylistActiveNow(playlist, now)
+  );
+  if (!active.length) return null;
+
+  active.sort((a, b) => {
+    const aStart = getPublishedPlaylistStartMs(a);
+    const bStart = getPublishedPlaylistStartMs(b);
+    const aScore = aStart === null ? -Infinity : aStart;
+    const bScore = bStart === null ? -Infinity : bStart;
+    if (aScore !== bScore) return bScore - aScore;
+    const aPublished = new Date(a?.publishedAt || 0).getTime() || 0;
+    const bPublished = new Date(b?.publishedAt || 0).getTime() || 0;
+    return bPublished - aPublished;
+  });
+
+  return active[0] || null;
+}
+
 function getSelectedPlaylist() {
   return playlistsCatalog.find((p) => p.id === selectedPlaylistId) || null;
 }
@@ -902,6 +954,8 @@ function renderDeviceCards() {
     const published = document.createElement("ul");
     published.className = "device-published-list";
     const pubs = Array.isArray(device.publishedPlaylists) ? device.publishedPlaylists : [];
+    const indicatorPlaylist = pickScheduledPlaylistForIndicator(pubs);
+    const indicatorPlaylistId = indicatorPlaylist?.playlistId || "";
     if (pubs.length === 0) {
       const li = document.createElement("li");
       li.textContent = "No playlists published";
@@ -910,7 +964,15 @@ function renderDeviceCards() {
       for (const p of pubs) {
         const li = document.createElement("li");
         const label = document.createElement("span");
+        label.className = "device-published-label";
         label.textContent = p.name;
+        const isPlaying = !!indicatorPlaylistId && p.playlistId === indicatorPlaylistId;
+        if (isPlaying) {
+          const playingLight = document.createElement("span");
+          playingLight.className = "playlist-playing-light";
+          playingLight.title = "Active now by schedule";
+          label.appendChild(playingLight);
+        }
         const rm = document.createElement("button");
         rm.type = "button";
         rm.textContent = "Remove";
