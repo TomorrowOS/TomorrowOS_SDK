@@ -17,6 +17,10 @@ let editorItems = [];
 
 /** @type {string|null} */
 let publishModalDeviceId = null;
+/** @type {string|null} */
+let editingDeviceNameId = null;
+/** @type {string} */
+let editingDeviceNameValue = "";
 
 let devicePollTimer = null;
 let uploadQueue = [];
@@ -660,13 +664,65 @@ function renderDeviceCards() {
 
     const header = document.createElement("div");
     header.className = "device-card-header";
+    const headerMain = document.createElement("div");
+    headerMain.className = "device-card-header-main";
     const led = document.createElement("span");
     led.className = `status-led ${device.connected ? "status-led--online" : "status-led--offline"}`;
     const title = document.createElement("h3");
     title.className = "device-card-title";
-    title.textContent = device.deviceName || "Screen";
-    header.appendChild(led);
-    header.appendChild(title);
+    const isEditingName = editingDeviceNameId === device.deviceId;
+    if (isEditingName) {
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "device-card-title-input";
+      input.value = editingDeviceNameValue || device.deviceName || "Screen";
+      input.placeholder = "Device name";
+      input.addEventListener("input", (ev) => {
+        editingDeviceNameValue = String(ev.target.value || "");
+      });
+      input.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          void submitInlineDeviceRename(device.deviceId);
+        } else if (ev.key === "Escape") {
+          ev.preventDefault();
+          cancelInlineDeviceRename();
+        }
+      });
+      title.appendChild(input);
+    } else {
+      title.textContent = device.deviceName || "Screen";
+    }
+    headerMain.appendChild(led);
+    headerMain.appendChild(title);
+
+    const headerActions = document.createElement("div");
+    headerActions.className = "device-card-header-actions";
+    if (isEditingName) {
+      const saveBtn = document.createElement("button");
+      saveBtn.type = "button";
+      saveBtn.className = "primary";
+      saveBtn.textContent = "Save";
+      saveBtn.addEventListener("click", () =>
+        void submitInlineDeviceRename(device.deviceId)
+      );
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.textContent = "Cancel";
+      cancelBtn.addEventListener("click", cancelInlineDeviceRename);
+      headerActions.appendChild(saveBtn);
+      headerActions.appendChild(cancelBtn);
+    } else {
+      const renameBtn = document.createElement("button");
+      renameBtn.type = "button";
+      renameBtn.textContent = "Rename";
+      renameBtn.addEventListener("click", () =>
+        startInlineDeviceRename(device.deviceId, device.deviceName)
+      );
+      headerActions.appendChild(renameBtn);
+    }
+    header.appendChild(headerMain);
+    header.appendChild(headerActions);
 
     const published = document.createElement("ul");
     published.className = "device-published-list";
@@ -1051,6 +1107,48 @@ async function unpairDevice(deviceId) {
   const data = await res.json();
   showResult(data);
   if (res.ok) await fetchDevices();
+}
+
+async function renameDevice(deviceId, currentName) {
+  if (!deviceId) return false;
+  const trimmed = String(currentName || "").trim();
+  if (!trimmed) {
+    alert("Device name cannot be empty.");
+    return false;
+  }
+
+  const res = await fetch(`/device/${encodeURIComponent(deviceId)}/name`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ deviceName: trimmed })
+  });
+  const data = await res.json();
+  showResult({ deviceId, rename: data });
+  if (!res.ok) {
+    alert(data.error || "Rename failed");
+    return false;
+  }
+  return true;
+}
+
+function startInlineDeviceRename(deviceId, currentName) {
+  editingDeviceNameId = deviceId;
+  editingDeviceNameValue = String(currentName || "").trim() || "Screen";
+  renderDeviceCards();
+}
+
+function cancelInlineDeviceRename() {
+  editingDeviceNameId = null;
+  editingDeviceNameValue = "";
+  renderDeviceCards();
+}
+
+async function submitInlineDeviceRename(deviceId) {
+  const ok = await renameDevice(deviceId, editingDeviceNameValue);
+  if (!ok) return;
+  editingDeviceNameId = null;
+  editingDeviceNameValue = "";
+  await fetchDevices();
 }
 
 async function deviceAction(deviceId, action) {

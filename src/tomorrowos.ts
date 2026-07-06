@@ -546,6 +546,33 @@ export class TomorrowOS extends EventEmitter {
     );
   }
 
+  async setDeviceName(deviceId: string, deviceName: string): Promise<{
+    deviceId: string;
+    deviceName: string;
+  }> {
+    const id = String(deviceId || "").trim();
+    if (!id) {
+      throw new Error("deviceId is required");
+    }
+
+    const existing = await this.store.getPairedDevice(id);
+    if (!existing) {
+      throw new Error("Device is not paired");
+    }
+
+    const normalized = String(deviceName || "").trim();
+    if (!normalized) {
+      throw new Error("deviceName is required");
+    }
+
+    await this.store.setPairedDevice(id, {
+      ...existing,
+      deviceName: normalized
+    });
+
+    return { deviceId: id, deviceName: normalized };
+  }
+
   private pushDeviceLog(deviceId: string, entry: DeviceLogEntry): void {
     const key = String(deviceId || "").trim();
     if (!key) return;
@@ -1271,6 +1298,23 @@ export class TomorrowOS extends EventEmitter {
       if (req.method === "GET" && pathname === "/devices") {
         const devices = await this.listDevices();
         sendJson(res, 200, { status: "success", devices });
+        return;
+      }
+
+      const deviceNamePatch = /^\/device\/([^/]+)\/name$/.exec(pathname);
+      if (req.method === "PATCH" && deviceNamePatch) {
+        const deviceId = decodeURIComponent(deviceNamePatch[1]);
+        const body = (await readJsonBody(req)) as { deviceName?: string };
+        try {
+          const result = await this.setDeviceName(
+            deviceId,
+            typeof body.deviceName === "string" ? body.deviceName : ""
+          );
+          sendJson(res, 200, { status: "success", ...result });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "Rename failed";
+          sendJson(res, 400, { status: "failed", error: msg });
+        }
         return;
       }
 
