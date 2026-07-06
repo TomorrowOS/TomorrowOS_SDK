@@ -531,6 +531,48 @@ button.danger {
   font-size: 0.9rem;
 }
 
+.publish-status {
+  margin-top: 0.85rem;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid #e4e1dc;
+  border-radius: 8px;
+  background: #fafaf9;
+}
+
+.publish-status-text {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 0.35rem;
+}
+
+.publish-status--error {
+  border-color: #fecdca;
+  background: #fff5f5;
+}
+
+.publish-status--error .publish-status-text {
+  color: #b42318;
+}
+
+.publish-status--success {
+  border-color: #abefc6;
+  background: #f3fcf6;
+}
+
+.publish-status--success .publish-status-text {
+  color: #067647;
+}
+
+.publish-status--success .upload-progress-bar {
+  background: #12b76a;
+}
+
+.modal-actions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .modal-actions {
   display: flex;
   gap: 0.5rem;

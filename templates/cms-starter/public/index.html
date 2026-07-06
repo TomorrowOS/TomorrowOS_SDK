@@ -129,6 +129,12 @@
         <h2>Publish to device</h2>
         <p class="hint" id="publishModalHint">Select playlists to add to this device. Already-published playlists are not listed here.</p>
         <div id="publishChecklist" class="publish-checklist"></div>
+        <div id="publishStatusShell" class="publish-status hidden" aria-live="polite">
+          <div id="publishStatusText" class="publish-status-text">Working...</div>
+          <div class="upload-progress-track">
+            <div id="publishProgressBar" class="upload-progress-bar"></div>
+          </div>
+        </div>
         <div class="modal-actions">
           <button type="button" id="publishConfirmBtn" class="primary">Publish selected</button>
           <button type="button" data-close-modal="1">Cancel</button>

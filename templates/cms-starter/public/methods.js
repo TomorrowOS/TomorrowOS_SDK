@@ -17,6 +17,7 @@ let editorItems = [];
 
 /** @type {string|null} */
 let publishModalDeviceId = null;
+let publishInProgress = false;
 /** @type {string|null} */
 let editingDeviceNameId = null;
 /** @type {string} */
@@ -138,8 +139,8 @@ function playlistHasRelativeMediaUrls(playlist) {
 
 /**
  * Base URL sent on publish only when needed.
- * - Hosted (e.g. Replit): use public origin only if items are still relative (/uploads/...).
- * - Local: use saved LAN override only when set; never default to rewriting otherwise.
+ * - Hosted (e.g. Replit): use public origin when items are relative (/uploads/...).
+ * - Local: prefer saved LAN override; otherwise fall back to current origin for dev.
  * - Returns null to omit mediaBaseUrl (playlist already has absolute https URLs).
  */
 function getPublishMediaBaseUrl(selectedPlaylists) {
@@ -152,7 +153,181 @@ function getPublishMediaBaseUrl(selectedPlaylists) {
   if (!isLocalPanelHost(window.location.hostname)) {
     return window.location.origin;
   }
-  return "";
+  // Local dev: same-origin fallback so panel publish/verify works without LAN override.
+  return window.location.origin;
+}
+
+/** Browser-side check URL — always same-origin so localhost panel can reach /uploads. */
+function resolveVerificationMediaUrl(url) {
+  const p = String(url || "").trim();
+  if (!p) return "";
+  if (p.startsWith("/")) return p;
+  try {
+    const parsed = new URL(p);
+    const path = parsed.pathname + parsed.search;
+    if (path.startsWith("/uploads/") || path.startsWith("/screenshots/")) {
+      return path;
+    }
+    return p;
+  } catch {
+    return p;
+  }
+}
+
+function resolvePublishMediaUrl(url, mediaBaseUrl) {
+  const p = String(url || "").trim();
+  if (!p) return "";
+  if (/^https?:\/\//i.test(p)) return p;
+  const base =
+    normalizeMediaBaseUrl(mediaBaseUrl) ||
+    getExplicitLanMediaBase() ||
+    window.location.origin;
+  if (!base) return "";
+  return `${base}${p.startsWith("/") ? p : `/${p}`}`;
+}
+
+async function verifyMediaAssetReachable(url) {
+  if (!url) return { ok: false, reason: "missing URL" };
+
+  const candidates = [];
+  const sameOriginPath = resolveVerificationMediaUrl(url);
+  if (sameOriginPath) candidates.push(sameOriginPath);
+  if (url && url !== sameOriginPath) candidates.push(url);
+
+  let lastReason = "unreachable";
+  for (const target of candidates) {
+    try {
+      // CMS static files are served on GET only (no HEAD / Range support).
+      const res = await fetch(target, { method: "GET", cache: "no-store" });
+      if (res.ok) return { ok: true };
+      lastReason = `HTTP ${res.status}`;
+    } catch (err) {
+      lastReason = err?.message || "network error";
+    }
+  }
+  return { ok: false, reason: lastReason };
+}
+
+async function verifyPlaylistsAssetsReady(playlists, mediaBaseUrl, onProgress) {
+  const tasks = [];
+  for (const pl of playlists) {
+    for (const item of pl.items || []) {
+      const name = String(item?.name || item?.url || "asset").split("/").pop() || "asset";
+      const resolvedUrl = resolveVerificationMediaUrl(item?.url);
+      tasks.push({
+        playlist: pl.name || pl.id,
+        name,
+        url: item?.url,
+        resolvedUrl
+      });
+    }
+  }
+
+  if (tasks.length === 0) {
+    return { ok: false, failures: [{ playlist: "—", name: "—", reason: "no assets in playlist" }] };
+  }
+
+  const failures = [];
+  let done = 0;
+  for (const task of tasks) {
+    onProgress?.(done, tasks.length, task.name);
+    if (!task.resolvedUrl) {
+      failures.push({
+        playlist: task.playlist,
+        name: task.name,
+        reason: "could not resolve media URL"
+      });
+    } else {
+      const result = await verifyMediaAssetReachable(task.resolvedUrl);
+      if (!result.ok) {
+        failures.push({
+          playlist: task.playlist,
+          name: task.name,
+          reason: result.reason || "unreachable"
+        });
+      }
+    }
+    done += 1;
+    onProgress?.(done, tasks.length, task.name);
+  }
+
+  return { ok: failures.length === 0, failures, total: tasks.length };
+}
+
+async function refreshPlaylistsForPublish() {
+  try {
+    const res = await fetch("/playlists");
+    let data = {};
+    try {
+      data = await res.json();
+    } catch {
+      data = {};
+    }
+    if (!res.ok || !Array.isArray(data.playlists)) return false;
+    playlistsCatalog = data.playlists;
+    renderPlaylistCatalog();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resetPublishModalStatus() {
+  publishInProgress = false;
+  updatePublishStatusUi({ hidden: true });
+  const confirmBtn = document.getElementById("publishConfirmBtn");
+  if (confirmBtn) {
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = "Publish selected";
+  }
+  const modal = document.getElementById("publishModal");
+  modal?.querySelectorAll("[data-close-modal]").forEach((el) => {
+    if (el instanceof HTMLButtonElement) el.disabled = false;
+  });
+  document
+    .querySelectorAll("#publishChecklist input[type=checkbox]")
+    .forEach((el) => {
+      if (el instanceof HTMLInputElement) el.disabled = false;
+    });
+}
+
+function setPublishModalBusy(busy) {
+  publishInProgress = busy;
+  const confirmBtn = document.getElementById("publishConfirmBtn");
+  if (confirmBtn) {
+    confirmBtn.disabled = busy;
+    confirmBtn.textContent = busy ? "Publishing..." : "Publish selected";
+  }
+  document
+    .querySelectorAll("#publishChecklist input[type=checkbox]")
+    .forEach((el) => {
+      if (el instanceof HTMLInputElement) el.disabled = busy;
+    });
+  document.querySelectorAll("#publishModal [data-close-modal]").forEach((el) => {
+    if (el instanceof HTMLButtonElement) el.disabled = busy;
+  });
+}
+
+function updatePublishStatusUi(status) {
+  const shell = document.getElementById("publishStatusShell");
+  const text = document.getElementById("publishStatusText");
+  const bar = document.getElementById("publishProgressBar");
+  if (!shell || !text || !bar) return;
+
+  if (!status || status.hidden) {
+    shell.classList.add("hidden");
+    shell.classList.remove("publish-status--error", "publish-status--success");
+    bar.style.width = "0%";
+    text.textContent = "";
+    return;
+  }
+
+  shell.classList.remove("hidden");
+  shell.classList.toggle("publish-status--error", !!status.isError);
+  shell.classList.toggle("publish-status--success", !!status.isSuccess);
+  text.textContent = status.text || "Working...";
+  const percent = Math.max(0, Math.min(100, Number(status.percent) || 0));
+  bar.style.width = `${percent}%`;
 }
 
 /** Resolve media URLs in the editor (save / thumbnails). */
@@ -876,15 +1051,24 @@ function openPublishModal(deviceId) {
   }
 
   modal.classList.remove("hidden");
+  resetPublishModalStatus();
 }
 
 function closePublishModal() {
+  if (publishInProgress) return;
   publishModalDeviceId = null;
+  resetPublishModalStatus();
   document.getElementById("publishModal")?.classList.add("hidden");
 }
 
 async function confirmPublishModal() {
-  if (!publishModalDeviceId) return;
+  if (!publishModalDeviceId || publishInProgress) return;
+
+  if (uploadInProgress || uploadQueue.length > 0) {
+    alert("Wait for asset uploads to finish before publishing.");
+    return;
+  }
+
   const ids = [
     ...document.querySelectorAll("#publishChecklist input[type=checkbox]:checked")
   ].map((el) => el.value);
@@ -894,48 +1078,121 @@ async function confirmPublishModal() {
     return;
   }
 
-  const selectedPlaylists = ids
-    .map((id) => playlistsCatalog.find((p) => p.id === id))
-    .filter(Boolean);
+  const deviceId = publishModalDeviceId;
+  setPublishModalBusy(true);
+  updatePublishStatusUi({ hidden: false, text: "Refreshing playlists...", percent: 8 });
 
-  for (const pl of selectedPlaylists) {
-    if (!(pl.items || []).length) {
-      alert(`Playlist "${pl.name || pl.id}" has no assets. Save the playlist first.`);
+  try {
+    const refreshed = await refreshPlaylistsForPublish();
+    if (!refreshed) {
+      updatePublishStatusUi({
+        text: "Could not load playlists from the server.",
+        percent: 0,
+        isError: true
+      });
+      setPublishModalBusy(false);
+      alert("Could not load playlists from the server. Try again.");
       return;
     }
-  }
 
-  const mediaBaseUrl = getPublishMediaBaseUrl(selectedPlaylists);
-  if (mediaBaseUrl === "") {
-    alert(
-      "Local CMS: save a LAN URL under “CMS URL for screens” (e.g. http://192.168.1.105:3000) so TVs can load /uploads paths. On Replit/hosted CMS this field is not required."
+    const selectedPlaylists = ids
+      .map((id) => playlistsCatalog.find((p) => p.id === id))
+      .filter(Boolean);
+
+    if (selectedPlaylists.length !== ids.length) {
+      updatePublishStatusUi({
+        text: "A selected playlist is no longer available.",
+        percent: 0,
+        isError: true
+      });
+      setPublishModalBusy(false);
+      alert("A selected playlist was removed or changed. Close this dialog and open Publish again.");
+      return;
+    }
+
+    for (const pl of selectedPlaylists) {
+      if (!(pl.items || []).length) {
+        updatePublishStatusUi({
+          text: `Playlist "${pl.name || pl.id}" has no assets.`,
+          percent: 0,
+          isError: true
+        });
+        setPublishModalBusy(false);
+        alert(`Playlist "${pl.name || pl.id}" has no assets. Save the playlist first.`);
+        return;
+      }
+    }
+
+    const mediaBaseUrl = getPublishMediaBaseUrl(selectedPlaylists);
+
+    const verification = await verifyPlaylistsAssetsReady(
+      selectedPlaylists,
+      mediaBaseUrl,
+      (done, total, assetName) => {
+        const pct = 12 + Math.round((done / Math.max(total, 1)) * 68);
+        updatePublishStatusUi({
+          text: `Verifying assets (${done}/${total}): ${assetName}`,
+          percent: pct
+        });
+      }
     );
-    return;
-  }
 
-  const device = devicesCache.find((d) => d.deviceId === publishModalDeviceId);
-  const alreadyOnDevice = (device?.publishedPlaylists || []).map((p) => p.playlistId);
-  const playlistIds = [...new Set([...alreadyOnDevice, ...ids])];
+    if (!verification.ok) {
+      const lines = verification.failures
+        .map((f) => `• ${f.playlist} — ${f.name}: ${f.reason}`)
+        .join("\n");
+      updatePublishStatusUi({
+        text: `Could not load ${verification.failures.length} asset(s). Publishing blocked.`,
+        percent: 0,
+        isError: true
+      });
+      setPublishModalBusy(false);
+      alert(`Cannot publish until all playlist assets are reachable:\n\n${lines}`);
+      return;
+    }
 
-  const publishBody = { playlistIds };
-  if (mediaBaseUrl) publishBody.mediaBaseUrl = mediaBaseUrl;
+    updatePublishStatusUi({ text: "Publishing to device...", percent: 88 });
 
-  const res = await fetch(
-    `/device/${encodeURIComponent(publishModalDeviceId)}/assignments`,
-    {
+    const device = devicesCache.find((d) => d.deviceId === deviceId);
+    const alreadyOnDevice = (device?.publishedPlaylists || []).map((p) => p.playlistId);
+    const playlistIds = [...new Set([...alreadyOnDevice, ...ids])];
+
+    const publishBody = { playlistIds };
+    if (mediaBaseUrl) publishBody.mediaBaseUrl = mediaBaseUrl;
+
+    const res = await fetch(`/device/${encodeURIComponent(deviceId)}/assignments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(publishBody)
+    });
+    const data = await res.json();
+    showResult({ deviceId, publish: data });
+
+    if (!res.ok) {
+      updatePublishStatusUi({
+        text: data.error || "Publish failed",
+        percent: 0,
+        isError: true
+      });
+      setPublishModalBusy(false);
+      alert(data.error || "Publish failed");
+      return;
     }
-  );
-  const data = await res.json();
-  showResult({ deviceId: publishModalDeviceId, publish: data });
-  if (!res.ok) {
-    alert(data.error || "Publish failed");
-    return;
+
+    updatePublishStatusUi({ text: "Published successfully!", percent: 100, isSuccess: true });
+    await fetchDevices();
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    publishInProgress = false;
+    closePublishModal();
+  } catch (err) {
+    updatePublishStatusUi({
+      text: err?.message || "Publish failed",
+      percent: 0,
+      isError: true
+    });
+    setPublishModalBusy(false);
+    alert(err?.message || "Publish failed");
   }
-  closePublishModal();
-  await fetchDevices();
 }
 
 async function removePlaylistFromDevice(deviceId, playlistId) {
