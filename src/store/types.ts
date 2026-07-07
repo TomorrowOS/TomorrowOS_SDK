@@ -24,6 +24,7 @@ export interface PairedDeviceRecord {
   platform?: string;
   system?: string;
   playerVersion?: string;
+  systemVersion?: string;
   lastBootAt?: string;
   lastOnlineAt?: string;
   lastOfflineAt?: string;
@@ -85,7 +86,6 @@ export interface StoredPlaylist {
   name: string;
   schedule?: PlaylistSchedule;
   items: PlaylistItemRecord[];
-  version: number;
   updatedAt: string;
   retired?: boolean;
   retiredAt?: string;
@@ -94,14 +94,12 @@ export interface StoredPlaylist {
 export interface PublishedPlaylistSnapshot {
   id: string;
   name: string;
-  version: number;
   schedule?: PlaylistSchedule;
   items: PlaylistItemRecord[];
 }
 
 export interface DevicePlaylistAssignment {
   playlistId: string;
-  publishedVersion: number;
   publishedAt: string;
   snapshot: PublishedPlaylistSnapshot;
 }

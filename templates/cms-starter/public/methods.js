@@ -872,6 +872,44 @@ async function fetchDevices() {
   }
 }
 
+function screenshotThumbUrl(screenshot) {
+  if (!screenshot?.url) return "";
+  const cacheBust = encodeURIComponent(screenshot.capturedAt || Date.now());
+  const joiner = screenshot.url.includes("?") ? "&" : "?";
+  return `${screenshot.url}${joiner}v=${cacheBust}`;
+}
+
+function appendDeviceMetaRow(meta, label, value) {
+  const row = document.createElement("div");
+  row.className = "device-meta-row";
+  const dt = document.createElement("dt");
+  dt.textContent = label;
+  const dd = document.createElement("dd");
+  dd.textContent = value;
+  row.appendChild(dt);
+  row.appendChild(dd);
+  meta.appendChild(row);
+}
+
+function createDeviceScreenshotThumb(device) {
+  const slot = document.createElement("div");
+  slot.className = "device-screenshot-slot";
+  const screenshot = device.latestScreenshot;
+  if (screenshot?.url) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "device-screenshot-thumb";
+    btn.title = `Last screenshot — ${formatDateTimeSeconds(screenshot.capturedAt)}`;
+    const img = document.createElement("img");
+    img.alt = `Last screenshot for ${device.deviceId}`;
+    img.src = screenshotThumbUrl(screenshot);
+    btn.appendChild(img);
+    btn.addEventListener("click", () => openScreenshotModal(device.deviceId, screenshot));
+    slot.appendChild(btn);
+  }
+  return slot;
+}
+
 function renderDeviceCards() {
   const grid = document.getElementById("devicesGrid");
   if (!grid) return;
@@ -983,29 +1021,42 @@ function renderDeviceCards() {
       }
     }
 
-    const meta = document.createElement("dl");
-    meta.className = "device-meta";
-    const rows = [
+    const metaBlock = document.createElement("div");
+    metaBlock.className = "device-meta-block";
+
+    const metaTop = document.createElement("div");
+    metaTop.className = "device-meta-top";
+
+    const metaPrimary = document.createElement("dl");
+    metaPrimary.className = "device-meta device-meta--primary";
+    const primaryRows = [
       ["Device ID", device.deviceId],
       ["System", device.system || device.platform || "—"],
-      ["Player version", device.playerVersion || "—"],
+      ["System version", device.systemVersion || "—"],
+      ["Player version", device.playerVersion || "—"]
+    ];
+    for (const [label, value] of primaryRows) {
+      appendDeviceMetaRow(metaPrimary, label, value);
+    }
+
+    metaTop.appendChild(metaPrimary);
+    metaTop.appendChild(createDeviceScreenshotThumb(device));
+
+    const metaSecondary = document.createElement("dl");
+    metaSecondary.className = "device-meta device-meta--secondary";
+    const secondaryRows = [
       ["Device online", formatDeviceOnlineLabel(device)],
       ["Last boot", formatDateTimeSeconds(device.lastBootAt)],
       ["Latest push", formatDateTimeSeconds(device.lastPolicyPushAt)],
       ["Latest error", device.latestErrorMessage || "—"],
       ["Error at", formatDateTimeSeconds(device.latestErrorAt)]
     ];
-    for (const [label, value] of rows) {
-      const row = document.createElement("div");
-      row.className = "device-meta-row";
-      const dt = document.createElement("dt");
-      dt.textContent = label;
-      const dd = document.createElement("dd");
-      dd.textContent = value;
-      row.appendChild(dt);
-      row.appendChild(dd);
-      meta.appendChild(row);
+    for (const [label, value] of secondaryRows) {
+      appendDeviceMetaRow(metaSecondary, label, value);
     }
+
+    metaBlock.appendChild(metaTop);
+    metaBlock.appendChild(metaSecondary);
 
     const actions = document.createElement("div");
     actions.className = "device-card-actions";
@@ -1071,7 +1122,7 @@ function renderDeviceCards() {
 
     card.appendChild(header);
     card.appendChild(published);
-    card.appendChild(meta);
+    card.appendChild(metaBlock);
     card.appendChild(actions);
     grid.appendChild(card);
   }
@@ -1518,6 +1569,7 @@ async function captureDeviceScreenshot(deviceId) {
   }
   const capturedAt = formatDateTimeSeconds(data.screenshot?.capturedAt);
   alert(`Screenshot captured successfully${capturedAt ? ` at ${capturedAt}` : ""}.`);
+  void fetchDevices();
 }
 
 async function viewLatestScreenshot(deviceId) {

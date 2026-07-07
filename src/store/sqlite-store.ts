@@ -17,6 +17,7 @@ import type {
   UploadedAssetRecord,
   UploadedAssetStorageProvider
 } from "./types.js";
+import { normalizePublishedPlaylistSnapshot } from "./snapshot-utils.js";
 
 interface SQLiteStoreOptions {
   databasePath?: string;
@@ -45,6 +46,7 @@ interface PairedDeviceRow {
   platform: string | null;
   system: string | null;
   player_version: string | null;
+  system_version: string | null;
   last_boot_at: string | null;
   last_online_at: string | null;
   last_offline_at: string | null;
@@ -56,7 +58,6 @@ interface PlaylistRow {
   name: string;
   schedule_json: string | null;
   items_json: string;
-  version: number;
   updated_at: string;
   retired: number;
   retired_at: string | null;
@@ -64,7 +65,6 @@ interface PlaylistRow {
 
 interface DeviceAssignmentRow {
   playlist_id: string;
-  published_version: number;
   published_at: string;
   snapshot_json: string;
 }
@@ -155,6 +155,7 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
         platform TEXT,
         system TEXT,
         player_version TEXT,
+        system_version TEXT,
         last_boot_at TEXT,
         last_online_at TEXT,
         last_offline_at TEXT,
@@ -166,7 +167,6 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
         name TEXT NOT NULL,
         schedule_json TEXT,
         items_json TEXT NOT NULL DEFAULT '[]',
-        version INTEGER NOT NULL,
         updated_at TEXT NOT NULL,
         retired INTEGER NOT NULL DEFAULT 0,
         retired_at TEXT
@@ -180,7 +180,6 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
         device_id TEXT NOT NULL,
         playlist_id TEXT NOT NULL,
         sort_order INTEGER NOT NULL,
-        published_version INTEGER NOT NULL,
         published_at TEXT NOT NULL,
         snapshot_json TEXT NOT NULL,
         PRIMARY KEY (device_id, playlist_id)
@@ -211,6 +210,121 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
         VALUES (1, 'initial_tomorrowos_store');
     `);
     this.addColumnIfMissing("paired_devices", "player_version TEXT");
+    this.addColumnIfMissing("paired_devices", "system_version TEXT");
+    this.migrateDropPlaylistVersionColumns();
+  }
+
+  private tableHasColumn(table: string, column: string): boolean {
+    const rows = this.db.pragma(`table_info(${table})`) as Array<{ name: string }>;
+    return rows.some((row) => row.name === column);
+  }
+
+  private migrateDropPlaylistVersionColumns(): void {
+    const alreadyApplied = this.db.prepare(`
+      SELECT 1
+      FROM schema_migrations
+      WHERE name = 'drop_playlist_version'
+      LIMIT 1
+    `).get();
+    if (alreadyApplied) return;
+
+    if (this.tableHasColumn("playlists", "version")) {
+      this.db.exec(`
+        CREATE TABLE playlists_new (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          schedule_json TEXT,
+          items_json TEXT NOT NULL DEFAULT '[]',
+          updated_at TEXT NOT NULL,
+          retired INTEGER NOT NULL DEFAULT 0,
+          retired_at TEXT
+        );
+
+        INSERT INTO playlists_new (
+          id, name, schedule_json, items_json, updated_at, retired, retired_at
+        )
+        SELECT id, name, schedule_json, items_json, updated_at, retired, retired_at
+        FROM playlists;
+
+        DROP TABLE playlists;
+        ALTER TABLE playlists_new RENAME TO playlists;
+
+        CREATE UNIQUE INDEX IF NOT EXISTS playlists_active_name_unique
+          ON playlists (lower(trim(name)))
+          WHERE retired = 0;
+      `);
+    }
+
+    if (this.tableHasColumn("device_assignments", "published_version")) {
+      const rows = this.db.prepare(`
+        SELECT device_id, playlist_id, sort_order, published_at, snapshot_json
+        FROM device_assignments
+        ORDER BY device_id ASC, sort_order ASC
+      `).all() as Array<{
+        device_id: string;
+        playlist_id: string;
+        sort_order: number;
+        published_at: string;
+        snapshot_json: string;
+      }>;
+
+      this.db.exec(`
+        CREATE TABLE device_assignments_new (
+          device_id TEXT NOT NULL,
+          playlist_id TEXT NOT NULL,
+          sort_order INTEGER NOT NULL,
+          published_at TEXT NOT NULL,
+          snapshot_json TEXT NOT NULL,
+          PRIMARY KEY (device_id, playlist_id)
+        );
+      `);
+
+      const insert = this.db.prepare(`
+        INSERT INTO device_assignments_new (
+          device_id,
+          playlist_id,
+          sort_order,
+          published_at,
+          snapshot_json
+        )
+        VALUES (?, ?, ?, ?, ?)
+      `);
+
+      const replaceAssignments = this.db.transaction(() => {
+        for (const row of rows) {
+          const snapshot = normalizePublishedPlaylistSnapshot(
+            parseJson<PublishedPlaylistSnapshot & { version?: unknown }>(
+              row.snapshot_json,
+              {
+                id: row.playlist_id,
+                name: row.playlist_id,
+                items: []
+              }
+            )
+          );
+          insert.run(
+            row.device_id,
+            row.playlist_id,
+            row.sort_order,
+            row.published_at,
+            JSON.stringify(snapshot)
+          );
+        }
+        this.db.exec("DROP TABLE device_assignments");
+        this.db.exec("ALTER TABLE device_assignments_new RENAME TO device_assignments");
+        this.db.exec(`
+          CREATE INDEX IF NOT EXISTS device_assignments_device_order_idx
+            ON device_assignments (device_id, sort_order)
+        `);
+      });
+
+      replaceAssignments();
+    }
+
+    this.db.prepare(`
+      INSERT OR IGNORE INTO schema_migrations (id, name)
+      VALUES (2, 'drop_playlist_version')
+    `).run();
   }
 
   private addColumnIfMissing(table: string, columnDefinition: string): void {
@@ -343,12 +457,13 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
         platform,
         system,
         player_version,
+        system_version,
         last_boot_at,
         last_online_at,
         last_offline_at,
         last_policy_push_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(device_id) DO UPDATE SET
         pairing_token = excluded.pairing_token,
         paired_at = excluded.paired_at,
@@ -356,6 +471,7 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
         platform = excluded.platform,
         system = excluded.system,
         player_version = excluded.player_version,
+        system_version = excluded.system_version,
         last_boot_at = excluded.last_boot_at,
         last_online_at = excluded.last_online_at,
         last_offline_at = excluded.last_offline_at,
@@ -368,6 +484,7 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
       record.platform ?? null,
       record.system ?? null,
       record.playerVersion ?? null,
+      record.systemVersion ?? null,
       record.lastBootAt ?? null,
       record.lastOnlineAt ?? null,
       record.lastOfflineAt ?? null,
@@ -427,17 +544,15 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
         name,
         schedule_json,
         items_json,
-        version,
         updated_at,
         retired,
         retired_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         schedule_json = excluded.schedule_json,
         items_json = excluded.items_json,
-        version = excluded.version,
         updated_at = excluded.updated_at,
         retired = excluded.retired,
         retired_at = excluded.retired_at
@@ -446,7 +561,6 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
       record.name,
       record.schedule ? JSON.stringify(record.schedule) : null,
       JSON.stringify(record.items ?? []),
-      record.version,
       record.updatedAt,
       record.retired ? 1 : 0,
       record.retiredAt ?? null
@@ -552,21 +666,24 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
     deviceId: string
   ): Promise<DevicePlaylistAssignment[]> {
     const rows = this.db.prepare(`
-      SELECT playlist_id, published_version, published_at, snapshot_json
+      SELECT playlist_id, published_at, snapshot_json
       FROM device_assignments
       WHERE device_id = ?
       ORDER BY sort_order ASC
     `).all(deviceId) as DeviceAssignmentRow[];
     return rows.map((row) => ({
       playlistId: row.playlist_id,
-      publishedVersion: row.published_version,
       publishedAt: row.published_at,
-      snapshot: parseJson<PublishedPlaylistSnapshot>(row.snapshot_json, {
-        id: row.playlist_id,
-        name: row.playlist_id,
-        version: row.published_version,
-        items: []
-      })
+      snapshot: normalizePublishedPlaylistSnapshot(
+        parseJson<PublishedPlaylistSnapshot & { version?: unknown }>(
+          row.snapshot_json,
+          {
+            id: row.playlist_id,
+            name: row.playlist_id,
+            items: []
+          }
+        )
+      )
     }));
   }
 
@@ -581,11 +698,10 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
           device_id,
           playlist_id,
           sort_order,
-          published_version,
           published_at,
           snapshot_json
         )
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?)
       `);
 
       assignments.forEach((assignment, index) => {
@@ -593,7 +709,6 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
           deviceId,
           assignment.playlistId,
           index,
-          assignment.publishedVersion,
           assignment.publishedAt,
           JSON.stringify(assignment.snapshot)
         );
@@ -621,6 +736,7 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
       platform: optionalString(row.platform),
       system: optionalString(row.system),
       playerVersion: optionalString(row.player_version),
+      systemVersion: optionalString(row.system_version),
       lastBootAt: optionalString(row.last_boot_at),
       lastOnlineAt: optionalString(row.last_online_at),
       lastOfflineAt: optionalString(row.last_offline_at),
@@ -634,7 +750,6 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
       name: row.name,
       schedule: parseJson<PlaylistSchedule | undefined>(row.schedule_json, undefined),
       items: parseJson(row.items_json, []),
-      version: row.version,
       updatedAt: row.updated_at,
       retired: row.retired === 1,
       retiredAt: optionalString(row.retired_at)

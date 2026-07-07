@@ -15,6 +15,7 @@ import type {
   UploadedAssetRecord,
   UploadedAssetStorageProvider
 } from "./types.js";
+import { normalizePublishedPlaylistSnapshot } from "./snapshot-utils.js";
 
 export interface PostgresStoreOptions {
   connectionString: string;
@@ -38,6 +39,7 @@ interface PairedDeviceRow {
   platform: string | null;
   system: string | null;
   player_version: string | null;
+  system_version: string | null;
   last_boot_at: string | null;
   last_online_at: string | null;
   last_offline_at: string | null;
@@ -49,7 +51,6 @@ interface PlaylistRow {
   name: string;
   schedule_json: string | null;
   items_json: string;
-  version: number;
   updated_at: string;
   retired: boolean;
   retired_at: string | null;
@@ -57,7 +58,6 @@ interface PlaylistRow {
 
 interface DeviceAssignmentRow {
   playlist_id: string;
-  published_version: number;
   published_at: string;
   snapshot_json: string;
 }
@@ -142,6 +142,7 @@ export class PostgresStore implements TomorrowOSMigratableStore {
         platform TEXT,
         system TEXT,
         player_version TEXT,
+        system_version TEXT,
         last_boot_at TEXT,
         last_online_at TEXT,
         last_offline_at TEXT,
@@ -153,7 +154,6 @@ export class PostgresStore implements TomorrowOSMigratableStore {
         name TEXT NOT NULL,
         schedule_json TEXT,
         items_json TEXT NOT NULL DEFAULT '[]',
-        version INTEGER NOT NULL,
         updated_at TEXT NOT NULL,
         retired BOOLEAN NOT NULL DEFAULT false,
         retired_at TEXT
@@ -167,7 +167,6 @@ export class PostgresStore implements TomorrowOSMigratableStore {
         device_id TEXT NOT NULL,
         playlist_id TEXT NOT NULL,
         sort_order INTEGER NOT NULL,
-        published_version INTEGER NOT NULL,
         published_at TEXT NOT NULL,
         snapshot_json TEXT NOT NULL,
         PRIMARY KEY (device_id, playlist_id)
@@ -200,6 +199,62 @@ export class PostgresStore implements TomorrowOSMigratableStore {
 
       ALTER TABLE paired_devices
         ADD COLUMN IF NOT EXISTS player_version TEXT;
+
+      ALTER TABLE paired_devices
+        ADD COLUMN IF NOT EXISTS system_version TEXT;
+    `);
+    await this.migrateDropPlaylistVersionColumns();
+  }
+
+  private async migrateDropPlaylistVersionColumns(): Promise<void> {
+    const applied = await this.pool.query<{ exists: number }>(`
+      SELECT 1 AS exists
+      FROM schema_migrations
+      WHERE name = 'drop_playlist_version'
+      LIMIT 1
+    `);
+    if (applied.rows.length > 0) return;
+
+    await this.pool.query(`
+      ALTER TABLE playlists
+        DROP COLUMN IF EXISTS version;
+    `);
+    await this.pool.query(`
+      ALTER TABLE device_assignments
+        DROP COLUMN IF EXISTS published_version;
+    `);
+
+    const assignmentRows = await this.pool.query<{
+      device_id: string;
+      playlist_id: string;
+      snapshot_json: string;
+    }>(`
+      SELECT device_id, playlist_id, snapshot_json
+      FROM device_assignments
+    `);
+
+    for (const row of assignmentRows.rows) {
+      const snapshot = normalizePublishedPlaylistSnapshot(
+        parseJson<PublishedPlaylistSnapshot & { version?: unknown }>(
+          row.snapshot_json,
+          {
+            id: row.playlist_id,
+            name: row.playlist_id,
+            items: []
+          }
+        )
+      );
+      await this.pool.query(`
+        UPDATE device_assignments
+        SET snapshot_json = $1
+        WHERE device_id = $2 AND playlist_id = $3
+      `, [JSON.stringify(snapshot), row.device_id, row.playlist_id]);
+    }
+
+    await this.pool.query(`
+      INSERT INTO schema_migrations (id, name)
+      VALUES (2, 'drop_playlist_version')
+      ON CONFLICT (id) DO NOTHING
     `);
   }
 
@@ -348,12 +403,13 @@ export class PostgresStore implements TomorrowOSMigratableStore {
         platform,
         system,
         player_version,
+        system_version,
         last_boot_at,
         last_online_at,
         last_offline_at,
         last_policy_push_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       ON CONFLICT (device_id) DO UPDATE SET
         pairing_token = EXCLUDED.pairing_token,
         paired_at = EXCLUDED.paired_at,
@@ -361,6 +417,7 @@ export class PostgresStore implements TomorrowOSMigratableStore {
         platform = EXCLUDED.platform,
         system = EXCLUDED.system,
         player_version = EXCLUDED.player_version,
+        system_version = EXCLUDED.system_version,
         last_boot_at = EXCLUDED.last_boot_at,
         last_online_at = EXCLUDED.last_online_at,
         last_offline_at = EXCLUDED.last_offline_at,
@@ -373,6 +430,7 @@ export class PostgresStore implements TomorrowOSMigratableStore {
       record.platform ?? null,
       record.system ?? null,
       record.playerVersion ?? null,
+      record.systemVersion ?? null,
       record.lastBootAt ?? null,
       record.lastOnlineAt ?? null,
       record.lastOfflineAt ?? null,
@@ -442,17 +500,15 @@ export class PostgresStore implements TomorrowOSMigratableStore {
         name,
         schedule_json,
         items_json,
-        version,
         updated_at,
         retired,
         retired_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
         schedule_json = EXCLUDED.schedule_json,
         items_json = EXCLUDED.items_json,
-        version = EXCLUDED.version,
         updated_at = EXCLUDED.updated_at,
         retired = EXCLUDED.retired,
         retired_at = EXCLUDED.retired_at
@@ -461,7 +517,6 @@ export class PostgresStore implements TomorrowOSMigratableStore {
       record.name,
       record.schedule ? JSON.stringify(record.schedule) : null,
       JSON.stringify(record.items ?? []),
-      record.version,
       record.updatedAt,
       record.retired === true,
       record.retiredAt ?? null
@@ -572,21 +627,24 @@ export class PostgresStore implements TomorrowOSMigratableStore {
   ): Promise<DevicePlaylistAssignment[]> {
     await this.ensureReady();
     const result = await this.pool.query<DeviceAssignmentRow>(`
-      SELECT playlist_id, published_version, published_at, snapshot_json
+      SELECT playlist_id, published_at, snapshot_json
       FROM device_assignments
       WHERE device_id = $1
       ORDER BY sort_order ASC
     `, [deviceId]);
     return result.rows.map((row) => ({
       playlistId: row.playlist_id,
-      publishedVersion: row.published_version,
       publishedAt: row.published_at,
-      snapshot: parseJson<PublishedPlaylistSnapshot>(row.snapshot_json, {
-        id: row.playlist_id,
-        name: row.playlist_id,
-        version: row.published_version,
-        items: []
-      })
+      snapshot: normalizePublishedPlaylistSnapshot(
+        parseJson<PublishedPlaylistSnapshot & { version?: unknown }>(
+          row.snapshot_json,
+          {
+            id: row.playlist_id,
+            name: row.playlist_id,
+            items: []
+          }
+        )
+      )
     }));
   }
 
@@ -608,16 +666,14 @@ export class PostgresStore implements TomorrowOSMigratableStore {
             device_id,
             playlist_id,
             sort_order,
-            published_version,
             published_at,
             snapshot_json
           )
-          VALUES ($1, $2, $3, $4, $5, $6)
+          VALUES ($1, $2, $3, $4, $5)
         `, [
           deviceId,
           assignment.playlistId,
           index,
-          assignment.publishedVersion,
           assignment.publishedAt,
           JSON.stringify(assignment.snapshot)
         ]);
@@ -650,6 +706,7 @@ export class PostgresStore implements TomorrowOSMigratableStore {
       platform: optionalString(row.platform),
       system: optionalString(row.system),
       playerVersion: optionalString(row.player_version),
+      systemVersion: optionalString(row.system_version),
       lastBootAt: optionalString(row.last_boot_at),
       lastOnlineAt: optionalString(row.last_online_at),
       lastOfflineAt: optionalString(row.last_offline_at),
@@ -663,7 +720,6 @@ export class PostgresStore implements TomorrowOSMigratableStore {
       name: row.name,
       schedule: parseJson<PlaylistSchedule | undefined>(row.schedule_json, undefined),
       items: parseJson(row.items_json, []),
-      version: row.version,
       updatedAt: row.updated_at,
       retired: row.retired,
       retiredAt: optionalString(row.retired_at)

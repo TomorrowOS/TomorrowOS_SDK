@@ -85,6 +85,7 @@ interface DeviceHelloMeta {
   bootUptimeSec?: number;
   playerVersion?: string;
   serialNumber?: string;
+  systemVersion?: string;
 }
 
 function normalizeDevicePlatform(
@@ -138,6 +139,7 @@ export interface DeviceListItem {
   platform: string | null;
   system: string | null;
   playerVersion: string | null;
+  systemVersion: string | null;
   serialNumber: string | null;
   pairedAt: string;
   lastBootAt: string | null;
@@ -151,7 +153,6 @@ export interface DeviceListItem {
   publishedPlaylists: Array<{
     playlistId: string;
     name: string;
-    version: number;
     publishedAt: string;
     schedule?: {
       startDate?: string;
@@ -162,6 +163,10 @@ export interface DeviceListItem {
   }>;
   latestErrorAt: string | null;
   latestErrorMessage: string | null;
+  latestScreenshot: {
+    url: string;
+    capturedAt: string;
+  } | null;
 }
 
 export interface DeviceLogEntry {
@@ -436,6 +441,7 @@ export class TomorrowOS extends EventEmitter {
       platform: meta?.platform,
       system: meta?.system,
       playerVersion: meta?.playerVersion,
+      systemVersion: meta?.systemVersion,
       ...(lastBootAt ? { lastBootAt } : {}),
       lastOnlineAt: this.isDeviceConnected(deviceId) ? now : undefined,
       lastOfflineAt: this.isDeviceConnected(deviceId) ? undefined : now
@@ -521,6 +527,20 @@ export class TomorrowOS extends EventEmitter {
         connected && record.lastBootAt ? record.lastBootAt : null;
       const logs = this.deviceLogs.get(deviceId) ?? [];
       const latestError = [...logs].reverse().find((entry) => entry.level === "error");
+      let latestScreenshot: DeviceListItem["latestScreenshot"] = null;
+      if (this.staticRoot) {
+        try {
+          const screenshot = await this.getLatestDeviceScreenshot(deviceId);
+          if (screenshot?.url) {
+            latestScreenshot = {
+              url: screenshot.url,
+              capturedAt: screenshot.capturedAt
+            };
+          }
+        } catch {
+          latestScreenshot = null;
+        }
+      }
 
       return {
         deviceId,
@@ -528,7 +548,6 @@ export class TomorrowOS extends EventEmitter {
         publishedPlaylists: assignments.map((a) => ({
           playlistId: a.playlistId,
           name: a.snapshot.name,
-          version: a.publishedVersion,
           publishedAt: a.publishedAt,
           schedule: a.snapshot.schedule
         })),
@@ -537,6 +556,7 @@ export class TomorrowOS extends EventEmitter {
         platform: record.platform ?? null,
         system: record.system ?? null,
         playerVersion: record.playerVersion ?? null,
+        systemVersion: record.systemVersion ?? null,
         serialNumber: reg?.serialNumber ?? deviceId,
         pairedAt: record.pairedAt,
         lastBootAt: record.lastBootAt ?? null,
@@ -547,7 +567,8 @@ export class TomorrowOS extends EventEmitter {
         screenOnlineLabel,
         screenOnlineSince,
         latestErrorAt: latestError?.timestamp ?? null,
-        latestErrorMessage: latestError?.message ?? null
+        latestErrorMessage: latestError?.message ?? null,
+        latestScreenshot
       };
     })
     );
@@ -613,6 +634,8 @@ export class TomorrowOS extends EventEmitter {
       bootUptimeSec: bootUptimeSec ?? undefined,
       playerVersion:
         typeof msg.playerVersion === "string" ? msg.playerVersion : undefined,
+      systemVersion:
+        typeof msg.systemVersion === "string" ? msg.systemVersion : undefined,
       serialNumber:
         typeof msg.serialNumber === "string" ? msg.serialNumber : deviceId
     });
@@ -686,6 +709,9 @@ export class TomorrowOS extends EventEmitter {
     const playerVersion =
       (typeof msg.playerVersion === "string" ? msg.playerVersion : undefined) ??
       existing.playerVersion;
+    const systemVersion =
+      (typeof msg.systemVersion === "string" ? msg.systemVersion : undefined) ??
+      existing.systemVersion;
 
     await this.store.setPairedDevice(deviceId, {
       ...existing,
@@ -695,6 +721,7 @@ export class TomorrowOS extends EventEmitter {
       platform,
       system,
       playerVersion,
+      systemVersion,
       ...(lastBootAt ? { lastBootAt } : {}),
       lastOnlineAt: now,
       lastOfflineAt: existing.lastOfflineAt
@@ -749,6 +776,7 @@ export class TomorrowOS extends EventEmitter {
         model?: string;
         firmware?: string;
         deviceId?: string;
+        systemVersion?: string;
       }>(ws, deviceId, "device.info.get", {}, 15_000);
 
       if (result.status !== "success" || !result.data) return;
@@ -758,6 +786,10 @@ export class TomorrowOS extends EventEmitter {
       const firmware =
         typeof result.data.firmware === "string"
           ? result.data.firmware
+          : undefined;
+      const systemVersion =
+        typeof result.data.systemVersion === "string"
+          ? result.data.systemVersion
           : undefined;
       const platform = normalizeDevicePlatform(existing.platform, existing.system);
 
@@ -769,7 +801,8 @@ export class TomorrowOS extends EventEmitter {
           firmware,
           existing.system
         ),
-        platform: platform ?? existing.platform
+        platform: platform ?? existing.platform,
+        systemVersion: systemVersion ?? existing.systemVersion
       });
     } catch {
       /* ignore — panel still shows hello metadata */

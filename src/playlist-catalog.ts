@@ -69,7 +69,6 @@ function cloneSnapshot(
   return {
     id: playlist.id,
     name: playlist.name,
-    version: playlist.version,
     schedule: playlist.schedule ? { ...playlist.schedule } : undefined,
     items: absolutizePlaylistItems(playlist.items, mediaBaseUrl)
   };
@@ -107,14 +106,12 @@ export class PlaylistCatalog {
       });
     }
 
-    const existing = await this.store.getPlaylist(id);
     const now = new Date().toISOString();
     const record: StoredPlaylist = {
       id,
       name,
       schedule: input.schedule,
       items: Array.isArray(input.items) ? input.items : [],
-      version: (existing?.version ?? 0) + 1,
       updatedAt: now,
       retired: false
     };
@@ -177,7 +174,6 @@ export class PlaylistCatalog {
 
       assignments.push({
         playlistId,
-        publishedVersion: playlist.version,
         publishedAt: new Date().toISOString(),
         snapshot: cloneSnapshot(playlist, options.mediaBaseUrl)
       });
@@ -207,7 +203,7 @@ export class PlaylistCatalog {
   }
 
   /**
-   * If the device has this playlist assigned, refresh its snapshot/version to latest
+   * If the device has this playlist assigned, refresh its snapshot to latest
    * and return a rebuilt snapshot policy for immediate push.
    */
   async refreshPlaylistSnapshotOnDevice(
@@ -229,7 +225,6 @@ export class PlaylistCatalog {
         ? a
         : {
             playlistId,
-            publishedVersion: playlist.version,
             publishedAt: new Date().toISOString(),
             snapshot: cloneSnapshot(playlist, options.mediaBaseUrl)
           }
