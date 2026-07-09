@@ -429,12 +429,52 @@ button.danger {
   font-size: 0.875rem;
 }
 
+.playlist-assets-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.78rem;
+}
+
 .playlist-item {
   border: 1px solid #e4e1dc;
   border-radius: 8px;
   padding: 0.65rem;
   margin-bottom: 0.5rem;
   background: #fafaf9;
+  position: relative;
+}
+
+.playlist-item--dragging {
+  opacity: 0.55;
+}
+
+.playlist-item--drop-target {
+  border-color: #ff8a3d;
+  box-shadow: 0 0 0 2px rgba(255, 138, 61, 0.25);
+}
+
+.playlist-item-drag-handle {
+  display: block;
+  width: 100%;
+  margin: 0 0 0.45rem;
+  padding: 0.2rem 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #888;
+  font-size: 0.95rem;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  cursor: grab;
+  touch-action: none;
+}
+
+.playlist-item-drag-handle:active {
+  cursor: grabbing;
+}
+
+.playlist-item-drag-handle:hover {
+  color: #444;
+  background: #f0eeea;
 }
 
 .playlist-item-thumb {

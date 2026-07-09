@@ -15,6 +15,9 @@ let playlistDraftActive = false;
 /** @type {{ id: string, assetId?: string, url: string, name: string, type: string, durationMs: number }[]} */
 let editorItems = [];
 
+/** Item id currently being dragged in the asset list (reorder). */
+let draggingEditorItemId = null;
+
 /** @type {string|null} */
 let publishModalDeviceId = null;
 let publishInProgress = false;
@@ -670,9 +673,75 @@ function loadEditorFromSelection() {
   updatePlaylistEditorVisibility();
 }
 
+function clearPlaylistItemDropTargets() {
+  document
+    .querySelectorAll(".playlist-item--drop-target, .playlist-item--dragging")
+    .forEach((el) => {
+      el.classList.remove("playlist-item--drop-target", "playlist-item--dragging");
+    });
+}
+
+function reorderEditorItems(fromId, toId) {
+  const fromIdx = editorItems.findIndex((x) => x.id === fromId);
+  const toIdx = editorItems.findIndex((x) => x.id === toId);
+  if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return;
+  const [moved] = editorItems.splice(fromIdx, 1);
+  editorItems.splice(toIdx, 0, moved);
+  renderEditorAssets();
+}
+
+function attachPlaylistItemDragDrop(li, item) {
+  li.dataset.itemId = item.id;
+
+  const handle = document.createElement("button");
+  handle.type = "button";
+  handle.className = "playlist-item-drag-handle";
+  handle.setAttribute("aria-label", "Drag to reorder");
+  handle.title = "Drag to reorder";
+  handle.textContent = "⋮⋮";
+  handle.draggable = true;
+
+  handle.addEventListener("dragstart", (e) => {
+    e.dataTransfer.setData("text/plain", item.id);
+    e.dataTransfer.effectAllowed = "move";
+    draggingEditorItemId = item.id;
+    li.classList.add("playlist-item--dragging");
+  });
+
+  handle.addEventListener("dragend", () => {
+    draggingEditorItemId = null;
+    clearPlaylistItemDropTargets();
+  });
+
+  li.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (draggingEditorItemId && draggingEditorItemId !== item.id) {
+      li.classList.add("playlist-item--drop-target");
+    }
+  });
+
+  li.addEventListener("dragleave", (e) => {
+    if (!li.contains(e.relatedTarget)) {
+      li.classList.remove("playlist-item--drop-target");
+    }
+  });
+
+  li.addEventListener("drop", (e) => {
+    e.preventDefault();
+    li.classList.remove("playlist-item--drop-target");
+    const fromId = e.dataTransfer.getData("text/plain") || draggingEditorItemId;
+    if (!fromId || fromId === item.id) return;
+    reorderEditorItems(fromId, item.id);
+  });
+
+  li.insertBefore(handle, li.firstChild);
+}
+
 function renderEditorAssets() {
   const list = document.getElementById("playlistList");
   const empty = document.getElementById("playlistEmpty");
+  draggingEditorItemId = null;
   list.querySelectorAll(".playlist-item").forEach((el) => el.remove());
 
   if (!isPlaylistEditorOpen()) {
@@ -696,6 +765,7 @@ function renderEditorAssets() {
     if (item.type === "image" || item.type === "video") {
       const thumb = document.createElement(item.type === "video" ? "video" : "img");
       thumb.className = "playlist-item-thumb";
+      thumb.draggable = false;
       try {
         thumb.src = absoluteMediaUrl(item.url);
       } catch {
@@ -752,6 +822,7 @@ function renderEditorAssets() {
     li.appendChild(name);
     li.appendChild(meta);
     li.appendChild(actions);
+    attachPlaylistItemDragDrop(li, item);
     list.appendChild(li);
   }
 }
