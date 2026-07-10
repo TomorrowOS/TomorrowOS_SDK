@@ -1,0 +1,5 @@
+# TomorrowOS CMS — must be "web" for Replit Publish (never "api").
+kind = "web"
+previewPath = "/"
+title = "TomorrowOS CMS"
+version = "1.0.0"

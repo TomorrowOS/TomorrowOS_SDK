@@ -1,0 +1,17 @@
+entrypoint = "server.ts"
+modules = ["nodejs-20"]
+hidden = [".config", "package-lock.json"]
+run = "npm run start"
+
+[nix]
+channel = "stable-24_11"
+
+# Expose the CMS HTTP + WebSocket server (TomorrowOS Control Panel at /).
+[[ports]]
+localPort = 3000
+externalPort = 80
+
+[deployment]
+run = ["sh", "-c", "npm run start"]
+deploymentTarget = "autoscale"
+ignorePorts = false

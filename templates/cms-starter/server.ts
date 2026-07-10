@@ -12,6 +12,8 @@ import { createTomorrowOSStore, TomorrowOS } from "@tomorrowos/sdk";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const brand = JSON.parse(readFileSync(join(__dirname, "brand.json"), "utf8"));
 const store = createTomorrowOSStore({
+  // On Replit prefer SUPABASE_URL — DATABASE_URL is often a reserved Secret.
+  databaseUrl: process.env.SUPABASE_URL || process.env.DATABASE_URL,
   sqlitePath: join(__dirname, "data", "tomorrowos.db")
 });
 

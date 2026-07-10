@@ -16,7 +16,7 @@ startup.
 
 ## Choose A Database
 
-Use `.env` to select the database.
+Use `.env` (or Replit Secrets) to select the database.
 
 Default local SQLite:
 
@@ -29,9 +29,13 @@ Supabase/Postgres:
 
 ```env
 TOMORROWOS_STORE=supabase
-DATABASE_URL=postgresql://postgres:[PASSWORD]@[HOST]:5432/postgres
+SUPABASE_URL=postgresql://postgres:[PASSWORD]@[HOST]:5432/postgres
 DATABASE_SSL=true
+# DATABASE_URL=...   # optional fallback; on Replit prefer SUPABASE_URL
 ```
+
+On Replit, follow the package root file **`REPLIT_SETUP.md`** for a guided Agent
+setup (screen count → SQLite vs Supabase → Cloudinary vs Object Storage → brand).
 
 Throwaway in-memory store for tests only:
 

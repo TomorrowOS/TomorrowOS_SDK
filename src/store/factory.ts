@@ -16,7 +16,11 @@ export interface CreateTomorrowOSStoreOptions {
   driver?: TomorrowOSStoreDriver;
   /** Defaults to TOMORROWOS_DB_PATH, then ./data/tomorrowos.db. */
   sqlitePath?: string;
-  /** Supabase/Postgres connection string. Defaults to DATABASE_URL. */
+  /**
+   * Supabase/Postgres connection string.
+   * Defaults to SUPABASE_URL, then DATABASE_URL.
+   * Prefer SUPABASE_URL on Replit (DATABASE_URL is often a reserved Secret).
+   */
   databaseUrl?: string;
   /** Defaults from DATABASE_SSL / DATABASE_URL. */
   postgresSsl?: PoolConfig["ssl"];
@@ -31,7 +35,8 @@ export function createTomorrowOSStore(
   options: CreateTomorrowOSStoreOptions = {}
 ): TomorrowOSStore {
   const env = options.env ?? process.env;
-  const databaseUrl = options.databaseUrl ?? env.DATABASE_URL;
+  const databaseUrl =
+    options.databaseUrl ?? env.SUPABASE_URL ?? env.DATABASE_URL;
   const driver = (
     options.driver ??
     env.TOMORROWOS_STORE ??
@@ -45,7 +50,7 @@ export function createTomorrowOSStore(
   if (driver === "postgres" || driver === "supabase") {
     if (!databaseUrl) {
       throw new Error(
-        `TOMORROWOS_STORE=${driver} requires DATABASE_URL. Set DATABASE_URL in .env or unset TOMORROWOS_STORE to use SQLite.`
+        `TOMORROWOS_STORE=${driver} requires SUPABASE_URL or DATABASE_URL. On Replit prefer SUPABASE_URL (DATABASE_URL is often reserved). Or unset TOMORROWOS_STORE to use SQLite.`
       );
     }
 
