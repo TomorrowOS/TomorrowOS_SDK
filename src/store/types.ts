@@ -29,6 +29,9 @@ export interface PairedDeviceRecord {
   lastOnlineAt?: string;
   lastOfflineAt?: string;
   lastPolicyPushAt?: string;
+  /** Latest device screenshot stored via uploaded_assets (local or Cloudinary). */
+  lastScreenshotAssetId?: string;
+  lastScreenshotCapturedAt?: string;
 }
 
 export interface PairedDeviceEntry {
@@ -53,12 +56,9 @@ export interface PlaylistItemRecord {
   durationMs?: number;
 }
 
-export type UploadedAssetStorageProvider = "local" | "cloudinary";
-
 export interface UploadedAssetRecord {
   id: string;
   sha256: string;
-  storageProvider: UploadedAssetStorageProvider;
   storageKey: string;
   url: string;
   originalFilename?: string;
@@ -129,10 +129,7 @@ export interface TomorrowOSStore {
   setPlaylist(record: StoredPlaylist): Promise<void>;
   isPlaylistNameTaken(name: string, excludeId?: string): Promise<boolean>;
   getUploadedAsset(id: string): Promise<UploadedAssetRecord | undefined>;
-  getUploadedAssetBySha256(
-    sha256: string,
-    storageProvider?: UploadedAssetStorageProvider
-  ): Promise<UploadedAssetRecord | undefined>;
+  getUploadedAssetBySha256(sha256: string): Promise<UploadedAssetRecord | undefined>;
   setUploadedAsset(record: UploadedAssetRecord): Promise<void>;
   deleteUploadedAsset(id: string): Promise<void>;
   getDeviceAssignments(deviceId: string): Promise<DevicePlaylistAssignment[]>;

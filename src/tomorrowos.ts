@@ -20,8 +20,7 @@ import type {
   PlaylistItemRecord,
   PlaylistSchedule,
   TomorrowOSStore,
-  UploadedAssetRecord,
-  UploadedAssetStorageProvider
+  UploadedAssetRecord
 } from "./store/types.js";
 import { MemoryStore } from "./store/memory-store.js";
 import {
@@ -182,6 +181,7 @@ export interface DeviceScreenshotInfo {
   url: string;
   capturedAt: string;
   mimeType: string;
+  assetId?: string;
   width?: number;
   height?: number;
 }
@@ -192,6 +192,10 @@ interface DeviceScreenshotPayload {
   capturedAt?: string;
   width?: number;
   height?: number;
+}
+
+function isRemoteUploadedAssetUrl(url: string): boolean {
+  return /^https?:\/\//i.test(String(url || "").trim());
 }
 
 function formatDurationMs(ms: number): string {
@@ -477,8 +481,15 @@ export class TomorrowOS extends EventEmitter {
       throw err;
     }
 
+    const paired = await this.store.getPairedDevice(id);
+    const screenshotAssetId = paired?.lastScreenshotAssetId;
+
     await this.store.deletePairedDevice(id);
     this.pendingDeviceMeta.delete(id);
+
+    if (screenshotAssetId) {
+      await this.deleteUploadedAssetIfUnreferenced(screenshotAssetId);
+    }
 
     const ws = this.devices.get(id);
     let notified = false;
@@ -896,9 +907,7 @@ export class TomorrowOS extends EventEmitter {
       }
       this.staticIndexFile = idx;
       const uploadsDir = path.join(path.resolve(this.staticRoot), "uploads");
-      const screenshotsDir = path.join(path.resolve(this.staticRoot), "screenshots");
       void fs.mkdir(uploadsDir, { recursive: true });
-      void fs.mkdir(screenshotsDir, { recursive: true });
       void this.refreshResolvedBrandLogo();
     } else {
       this.staticIndexFile = "index.html";
@@ -973,10 +982,9 @@ export class TomorrowOS extends EventEmitter {
         status: "success",
         url: asset.url,
         assetId: asset.id,
-        filename: asset.storageProvider === "local" ? asset.storageKey : safeName,
+        filename: isRemoteUploadedAssetUrl(asset.url) ? safeName : asset.storageKey,
         size: asset.bytes ?? body.length,
         contentHash: asset.sha256,
-        storageProvider: asset.storageProvider,
         deduplicated
       };
       if (durationMs != null) payload.durationMs = durationMs;
@@ -995,16 +1003,10 @@ export class TomorrowOS extends EventEmitter {
   ): Promise<{ asset: UploadedAssetRecord; deduplicated: boolean }> {
     const sha256 = contentHashHex(body);
     const cloudinaryConfig = resolveCloudinaryConfig();
-    const storageProvider: UploadedAssetStorageProvider = cloudinaryConfig
-      ? "cloudinary"
-      : "local";
 
-    const existing = await this.store.getUploadedAssetBySha256(
-      sha256,
-      storageProvider
-    );
+    const existing = await this.store.getUploadedAssetBySha256(sha256);
     if (existing) {
-      if (existing.storageProvider === "cloudinary") {
+      if (isRemoteUploadedAssetUrl(existing.url)) {
         return { asset: existing, deduplicated: true };
       }
 
@@ -1035,7 +1037,6 @@ export class TomorrowOS extends EventEmitter {
       const asset: UploadedAssetRecord = {
         id: randomUUID(),
         sha256,
-        storageProvider: "cloudinary",
         storageKey: uploaded.publicId,
         url: uploaded.secureUrl,
         originalFilename: safeName,
@@ -1059,7 +1060,6 @@ export class TomorrowOS extends EventEmitter {
     const asset: UploadedAssetRecord = {
       id: existing?.id ?? randomUUID(),
       sha256,
-      storageProvider: "local",
       storageKey: storedName,
       url: `/uploads/${storedName}`,
       originalFilename: safeName,
@@ -1103,14 +1103,22 @@ export class TomorrowOS extends EventEmitter {
     }
   }
 
+  private async isUploadedAssetReferencedAsDeviceScreenshot(
+    assetId: string
+  ): Promise<boolean> {
+    const devices = await this.store.listPairedDevices();
+    return devices.some((entry) => entry.record.lastScreenshotAssetId === assetId);
+  }
+
   private async deleteUploadedAssetIfUnreferenced(assetId: string): Promise<void> {
     try {
       if (await this.isUploadedAssetReferenced(assetId)) return;
+      if (await this.isUploadedAssetReferencedAsDeviceScreenshot(assetId)) return;
 
       const asset = await this.store.getUploadedAsset(assetId);
       if (!asset) return;
 
-      if (asset.storageProvider === "cloudinary") {
+      if (isRemoteUploadedAssetUrl(asset.url)) {
         const cloudinaryConfig = resolveCloudinaryConfig();
         if (!cloudinaryConfig) {
           console.warn(
@@ -1197,15 +1205,11 @@ export class TomorrowOS extends EventEmitter {
     }
   }
 
-  private getScreenshotsDir(): string {
+  private getLegacyScreenshotsDir(): string {
     if (!this.staticRoot) {
       throw new Error("Screenshot storage requires listen({ staticRoot })");
     }
     return path.join(path.resolve(this.staticRoot), "screenshots");
-  }
-
-  private screenshotBaseName(deviceId: string): string {
-    return sanitizeStorageSegment(deviceId);
   }
 
   private screenshotExtension(mimeType: string): string {
@@ -1213,6 +1217,30 @@ export class TomorrowOS extends EventEmitter {
     if (normalized === "image/png") return ".png";
     if (normalized === "image/webp") return ".webp";
     return ".jpg";
+  }
+
+  private async getLegacyDeviceScreenshot(
+    deviceId: string
+  ): Promise<DeviceScreenshotInfo | null> {
+    if (!this.staticRoot) return null;
+
+    const base = sanitizeStorageSegment(deviceId);
+    const metaPath = path.join(this.getLegacyScreenshotsDir(), `${base}.json`);
+    try {
+      const raw = await fs.readFile(metaPath, "utf8");
+      const parsed = JSON.parse(raw) as DeviceScreenshotInfo;
+      if (!parsed || typeof parsed.url !== "string") return null;
+      return {
+        deviceId,
+        url: parsed.url,
+        capturedAt: parsed.capturedAt,
+        mimeType: parsed.mimeType || "image/jpeg",
+        width: parsed.width,
+        height: parsed.height
+      };
+    } catch {
+      return null;
+    }
   }
 
   private async saveDeviceScreenshot(
@@ -1229,45 +1257,62 @@ export class TomorrowOS extends EventEmitter {
       throw new Error("Screenshot payload missing dataBase64");
     }
 
-    const dir = this.getScreenshotsDir();
-    await fs.mkdir(dir, { recursive: true });
-    const base = this.screenshotBaseName(deviceId);
-    const ext = this.screenshotExtension(mimeType);
-    const filename = `${base}${ext}`;
-    const filePath = path.join(dir, filename);
-    const metaPath = path.join(dir, `${base}.json`);
     const capturedAt =
       typeof payload.capturedAt === "string" && payload.capturedAt.trim()
         ? payload.capturedAt
         : new Date().toISOString();
+    const body = Buffer.from(dataBase64, "base64");
+    const safeName = sanitizeUploadFilename(
+      `screenshot-${sanitizeStorageSegment(deviceId)}-${Date.now()}${this.screenshotExtension(mimeType)}`
+    );
 
-    await fs.writeFile(filePath, Buffer.from(dataBase64, "base64"));
-    const info: DeviceScreenshotInfo = {
+    const paired = await this.store.getPairedDevice(deviceId);
+    const previousAssetId = paired?.lastScreenshotAssetId;
+
+    const { asset } = await this.storeUploadedMediaAsset(body, safeName, mimeType);
+    if (paired) {
+      await this.store.setPairedDevice(deviceId, {
+        ...paired,
+        lastScreenshotAssetId: asset.id,
+        lastScreenshotCapturedAt: capturedAt
+      });
+    }
+
+    if (previousAssetId && previousAssetId !== asset.id) {
+      await this.deleteUploadedAssetIfUnreferenced(previousAssetId);
+    }
+
+    return {
       deviceId,
-      url: `/screenshots/${filename}`,
+      assetId: asset.id,
+      url: asset.url,
       capturedAt,
-      mimeType,
+      mimeType: asset.mimeType || mimeType,
       width: typeof payload.width === "number" ? payload.width : undefined,
       height: typeof payload.height === "number" ? payload.height : undefined
     };
-    await fs.writeFile(metaPath, JSON.stringify(info, null, 2));
-    return info;
   }
 
   private async getLatestDeviceScreenshot(
     deviceId: string
   ): Promise<DeviceScreenshotInfo | null> {
-    const dir = this.getScreenshotsDir();
-    const base = this.screenshotBaseName(deviceId);
-    const metaPath = path.join(dir, `${base}.json`);
-    try {
-      const raw = await fs.readFile(metaPath, "utf8");
-      const parsed = JSON.parse(raw) as DeviceScreenshotInfo;
-      if (!parsed || typeof parsed.url !== "string") return null;
-      return parsed;
-    } catch {
-      return null;
+    const paired = await this.store.getPairedDevice(deviceId);
+    const assetId = paired?.lastScreenshotAssetId;
+    const capturedAt = paired?.lastScreenshotCapturedAt;
+    if (assetId && capturedAt) {
+      const asset = await this.store.getUploadedAsset(assetId);
+      if (asset) {
+        return {
+          deviceId,
+          assetId: asset.id,
+          url: asset.url,
+          capturedAt,
+          mimeType: asset.mimeType || "image/jpeg"
+        };
+      }
     }
+
+    return this.getLegacyDeviceScreenshot(deviceId);
   }
 
   private async captureDeviceScreenshot(deviceId: string): Promise<DeviceScreenshotInfo> {

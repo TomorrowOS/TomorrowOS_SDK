@@ -12,8 +12,7 @@ import type {
   PublishedPlaylistSnapshot,
   StoredPlaylist,
   TomorrowOSMigratableStore,
-  UploadedAssetRecord,
-  UploadedAssetStorageProvider
+  UploadedAssetRecord
 } from "./types.js";
 import { normalizePublishedPlaylistSnapshot } from "./snapshot-utils.js";
 
@@ -44,6 +43,8 @@ interface PairedDeviceRow {
   last_online_at: string | null;
   last_offline_at: string | null;
   last_policy_push_at: string | null;
+  last_screenshot_asset_id: string | null;
+  last_screenshot_captured_at: string | null;
 }
 
 interface PlaylistRow {
@@ -65,7 +66,6 @@ interface DeviceAssignmentRow {
 interface UploadedAssetRow {
   id: string;
   sha256: string;
-  storage_provider: string;
   storage_key: string;
   url: string;
   original_filename: string | null;
@@ -177,8 +177,7 @@ export class PostgresStore implements TomorrowOSMigratableStore {
 
       CREATE TABLE IF NOT EXISTS uploaded_assets (
         id TEXT PRIMARY KEY,
-        sha256 TEXT NOT NULL,
-        storage_provider TEXT NOT NULL,
+        sha256 TEXT NOT NULL UNIQUE,
         storage_key TEXT NOT NULL,
         url TEXT NOT NULL,
         original_filename TEXT,
@@ -186,8 +185,7 @@ export class PostgresStore implements TomorrowOSMigratableStore {
         resource_type TEXT,
         bytes BIGINT,
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        UNIQUE (storage_provider, sha256)
+        updated_at TEXT NOT NULL
       );
 
       CREATE INDEX IF NOT EXISTS uploaded_assets_sha256_idx
@@ -202,8 +200,83 @@ export class PostgresStore implements TomorrowOSMigratableStore {
 
       ALTER TABLE paired_devices
         ADD COLUMN IF NOT EXISTS system_version TEXT;
+
+      ALTER TABLE paired_devices
+        ADD COLUMN IF NOT EXISTS last_screenshot_asset_id TEXT;
+
+      ALTER TABLE paired_devices
+        ADD COLUMN IF NOT EXISTS last_screenshot_captured_at TEXT;
     `);
     await this.migrateDropPlaylistVersionColumns();
+    await this.migrateDropUploadedAssetStorageProvider();
+  }
+
+  private async migrateDropUploadedAssetStorageProvider(): Promise<void> {
+    const applied = await this.pool.query(`
+      SELECT 1
+      FROM schema_migrations
+      WHERE name = 'drop_uploaded_asset_storage_provider'
+      LIMIT 1
+    `);
+    if (applied.rows.length > 0) return;
+
+    const columnExists = await this.pool.query<{ exists: boolean }>(`
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'uploaded_assets'
+          AND column_name = 'storage_provider'
+      ) AS exists
+    `);
+    if (!columnExists.rows[0]?.exists) {
+      await this.pool.query(`
+        INSERT INTO schema_migrations (id, name)
+        VALUES (2, 'drop_uploaded_asset_storage_provider')
+        ON CONFLICT (id) DO NOTHING
+      `);
+      return;
+    }
+
+    await this.pool.query(`
+      DELETE FROM uploaded_assets a
+      USING uploaded_assets b
+      WHERE a.sha256 = b.sha256
+        AND (
+          CASE WHEN a.url LIKE 'http%' THEN 0 ELSE 1 END,
+          a.updated_at
+        ) > (
+          CASE WHEN b.url LIKE 'http%' THEN 0 ELSE 1 END,
+          b.updated_at
+        )
+    `);
+
+    await this.pool.query(`
+      ALTER TABLE uploaded_assets
+        DROP CONSTRAINT IF EXISTS uploaded_assets_storage_provider_sha256_key
+    `);
+    await this.pool.query(`
+      ALTER TABLE uploaded_assets
+        DROP COLUMN IF EXISTS storage_provider
+    `);
+    await this.pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_constraint
+          WHERE conname = 'uploaded_assets_sha256_key'
+        ) THEN
+          ALTER TABLE uploaded_assets
+            ADD CONSTRAINT uploaded_assets_sha256_key UNIQUE (sha256);
+        END IF;
+      END $$;
+    `);
+
+    await this.pool.query(`
+      INSERT INTO schema_migrations (id, name)
+      VALUES (2, 'drop_uploaded_asset_storage_provider')
+      ON CONFLICT (id) DO NOTHING
+    `);
   }
 
   private async migrateDropPlaylistVersionColumns(): Promise<void> {
@@ -407,9 +480,11 @@ export class PostgresStore implements TomorrowOSMigratableStore {
         last_boot_at,
         last_online_at,
         last_offline_at,
-        last_policy_push_at
+        last_policy_push_at,
+        last_screenshot_asset_id,
+        last_screenshot_captured_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       ON CONFLICT (device_id) DO UPDATE SET
         pairing_token = EXCLUDED.pairing_token,
         paired_at = EXCLUDED.paired_at,
@@ -421,7 +496,9 @@ export class PostgresStore implements TomorrowOSMigratableStore {
         last_boot_at = EXCLUDED.last_boot_at,
         last_online_at = EXCLUDED.last_online_at,
         last_offline_at = EXCLUDED.last_offline_at,
-        last_policy_push_at = EXCLUDED.last_policy_push_at
+        last_policy_push_at = EXCLUDED.last_policy_push_at,
+        last_screenshot_asset_id = EXCLUDED.last_screenshot_asset_id,
+        last_screenshot_captured_at = EXCLUDED.last_screenshot_captured_at
     `, [
       deviceId,
       record.pairingToken,
@@ -434,7 +511,9 @@ export class PostgresStore implements TomorrowOSMigratableStore {
       record.lastBootAt ?? null,
       record.lastOnlineAt ?? null,
       record.lastOfflineAt ?? null,
-      record.lastPolicyPushAt ?? null
+      record.lastPolicyPushAt ?? null,
+      record.lastScreenshotAssetId ?? null,
+      record.lastScreenshotCapturedAt ?? null
     ]);
   }
 
@@ -550,17 +629,15 @@ export class PostgresStore implements TomorrowOSMigratableStore {
   }
 
   async getUploadedAssetBySha256(
-    sha256: string,
-    storageProvider?: UploadedAssetStorageProvider
+    sha256: string
   ): Promise<UploadedAssetRecord | undefined> {
     await this.ensureReady();
     const result = await this.pool.query<UploadedAssetRow>(`
       SELECT *
       FROM uploaded_assets
       WHERE sha256 = $1
-        AND ($2::text IS NULL OR storage_provider = $2)
       LIMIT 1
-    `, [sha256, storageProvider ?? null]);
+    `, [sha256]);
     const row = result.rows[0];
     return row ? this.mapUploadedAssetRow(row) : undefined;
   }
@@ -571,7 +648,6 @@ export class PostgresStore implements TomorrowOSMigratableStore {
       INSERT INTO uploaded_assets (
         id,
         sha256,
-        storage_provider,
         storage_key,
         url,
         original_filename,
@@ -581,10 +657,9 @@ export class PostgresStore implements TomorrowOSMigratableStore {
         created_at,
         updated_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       ON CONFLICT (id) DO UPDATE SET
         sha256 = EXCLUDED.sha256,
-        storage_provider = EXCLUDED.storage_provider,
         storage_key = EXCLUDED.storage_key,
         url = EXCLUDED.url,
         original_filename = EXCLUDED.original_filename,
@@ -595,7 +670,6 @@ export class PostgresStore implements TomorrowOSMigratableStore {
     `, [
       record.id,
       record.sha256,
-      record.storageProvider,
       record.storageKey,
       record.url,
       record.originalFilename ?? null,
@@ -710,7 +784,9 @@ export class PostgresStore implements TomorrowOSMigratableStore {
       lastBootAt: optionalString(row.last_boot_at),
       lastOnlineAt: optionalString(row.last_online_at),
       lastOfflineAt: optionalString(row.last_offline_at),
-      lastPolicyPushAt: optionalString(row.last_policy_push_at)
+      lastPolicyPushAt: optionalString(row.last_policy_push_at),
+      lastScreenshotAssetId: optionalString(row.last_screenshot_asset_id),
+      lastScreenshotCapturedAt: optionalString(row.last_screenshot_captured_at)
     };
   }
 
@@ -730,7 +806,6 @@ export class PostgresStore implements TomorrowOSMigratableStore {
     return {
       id: row.id,
       sha256: row.sha256,
-      storageProvider: row.storage_provider as UploadedAssetStorageProvider,
       storageKey: row.storage_key,
       url: row.url,
       originalFilename: optionalString(row.original_filename),

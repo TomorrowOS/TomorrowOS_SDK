@@ -113,14 +113,10 @@ export class MemoryStore implements TomorrowOSStore {
   }
 
   async getUploadedAssetBySha256(
-    sha256: string,
-    storageProvider?: UploadedAssetRecord["storageProvider"]
+    sha256: string
   ): Promise<UploadedAssetRecord | undefined> {
     for (const asset of this.uploadedAssets.values()) {
-      if (
-        asset.sha256 === sha256 &&
-        (!storageProvider || asset.storageProvider === storageProvider)
-      ) {
+      if (asset.sha256 === sha256) {
         return asset;
       }
     }

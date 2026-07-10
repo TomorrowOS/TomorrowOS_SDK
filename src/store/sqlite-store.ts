@@ -14,8 +14,7 @@ import type {
   PublishedPlaylistSnapshot,
   StoredPlaylist,
   TomorrowOSMigratableStore,
-  UploadedAssetRecord,
-  UploadedAssetStorageProvider
+  UploadedAssetRecord
 } from "./types.js";
 import { normalizePublishedPlaylistSnapshot } from "./snapshot-utils.js";
 
@@ -51,6 +50,8 @@ interface PairedDeviceRow {
   last_online_at: string | null;
   last_offline_at: string | null;
   last_policy_push_at: string | null;
+  last_screenshot_asset_id: string | null;
+  last_screenshot_captured_at: string | null;
 }
 
 interface PlaylistRow {
@@ -72,7 +73,6 @@ interface DeviceAssignmentRow {
 interface UploadedAssetRow {
   id: string;
   sha256: string;
-  storage_provider: string;
   storage_key: string;
   url: string;
   original_filename: string | null;
@@ -190,8 +190,7 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
 
       CREATE TABLE IF NOT EXISTS uploaded_assets (
         id TEXT PRIMARY KEY,
-        sha256 TEXT NOT NULL,
-        storage_provider TEXT NOT NULL,
+        sha256 TEXT NOT NULL UNIQUE,
         storage_key TEXT NOT NULL,
         url TEXT NOT NULL,
         original_filename TEXT,
@@ -199,8 +198,7 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
         resource_type TEXT,
         bytes INTEGER,
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        UNIQUE (storage_provider, sha256)
+        updated_at TEXT NOT NULL
       );
 
       CREATE INDEX IF NOT EXISTS uploaded_assets_sha256_idx
@@ -211,7 +209,97 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
     `);
     this.addColumnIfMissing("paired_devices", "player_version TEXT");
     this.addColumnIfMissing("paired_devices", "system_version TEXT");
+    this.addColumnIfMissing("paired_devices", "last_screenshot_asset_id TEXT");
+    this.addColumnIfMissing("paired_devices", "last_screenshot_captured_at TEXT");
     this.migrateDropPlaylistVersionColumns();
+    this.migrateDropUploadedAssetStorageProvider();
+  }
+
+  private migrateDropUploadedAssetStorageProvider(): void {
+    const alreadyApplied = this.db.prepare(`
+      SELECT 1
+      FROM schema_migrations
+      WHERE name = 'drop_uploaded_asset_storage_provider'
+      LIMIT 1
+    `).get();
+    if (alreadyApplied) return;
+
+    if (!this.tableHasColumn("uploaded_assets", "storage_provider")) {
+      this.db.prepare(`
+        INSERT OR IGNORE INTO schema_migrations (id, name)
+        VALUES (2, 'drop_uploaded_asset_storage_provider')
+      `).run();
+      return;
+    }
+
+    this.db.exec(`
+      CREATE TABLE uploaded_assets_new (
+        id TEXT PRIMARY KEY,
+        sha256 TEXT NOT NULL UNIQUE,
+        storage_key TEXT NOT NULL,
+        url TEXT NOT NULL,
+        original_filename TEXT,
+        mime_type TEXT,
+        resource_type TEXT,
+        bytes INTEGER,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      INSERT INTO uploaded_assets_new (
+        id,
+        sha256,
+        storage_key,
+        url,
+        original_filename,
+        mime_type,
+        resource_type,
+        bytes,
+        created_at,
+        updated_at
+      )
+      SELECT
+        id,
+        sha256,
+        storage_key,
+        url,
+        original_filename,
+        mime_type,
+        resource_type,
+        bytes,
+        created_at,
+        updated_at
+      FROM (
+        SELECT
+          id,
+          sha256,
+          storage_key,
+          url,
+          original_filename,
+          mime_type,
+          resource_type,
+          bytes,
+          created_at,
+          updated_at,
+          ROW_NUMBER() OVER (
+            PARTITION BY sha256
+            ORDER BY CASE WHEN url LIKE 'http%' THEN 0 ELSE 1 END, updated_at DESC
+          ) AS rn
+        FROM uploaded_assets
+      )
+      WHERE rn = 1;
+
+      DROP TABLE uploaded_assets;
+      ALTER TABLE uploaded_assets_new RENAME TO uploaded_assets;
+
+      CREATE INDEX IF NOT EXISTS uploaded_assets_sha256_idx
+        ON uploaded_assets (sha256);
+    `);
+
+    this.db.prepare(`
+      INSERT OR IGNORE INTO schema_migrations (id, name)
+      VALUES (2, 'drop_uploaded_asset_storage_provider')
+    `).run();
   }
 
   private tableHasColumn(table: string, column: string): boolean {
@@ -461,9 +549,11 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
         last_boot_at,
         last_online_at,
         last_offline_at,
-        last_policy_push_at
+        last_policy_push_at,
+        last_screenshot_asset_id,
+        last_screenshot_captured_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(device_id) DO UPDATE SET
         pairing_token = excluded.pairing_token,
         paired_at = excluded.paired_at,
@@ -475,7 +565,9 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
         last_boot_at = excluded.last_boot_at,
         last_online_at = excluded.last_online_at,
         last_offline_at = excluded.last_offline_at,
-        last_policy_push_at = excluded.last_policy_push_at
+        last_policy_push_at = excluded.last_policy_push_at,
+        last_screenshot_asset_id = excluded.last_screenshot_asset_id,
+        last_screenshot_captured_at = excluded.last_screenshot_captured_at
     `).run(
       deviceId,
       record.pairingToken,
@@ -488,7 +580,9 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
       record.lastBootAt ?? null,
       record.lastOnlineAt ?? null,
       record.lastOfflineAt ?? null,
-      record.lastPolicyPushAt ?? null
+      record.lastPolicyPushAt ?? null,
+      record.lastScreenshotAssetId ?? null,
+      record.lastScreenshotCapturedAt ?? null
     );
   }
 
@@ -591,20 +685,14 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
   }
 
   async getUploadedAssetBySha256(
-    sha256: string,
-    storageProvider?: UploadedAssetStorageProvider
+    sha256: string
   ): Promise<UploadedAssetRecord | undefined> {
     const row = this.db.prepare(`
       SELECT *
       FROM uploaded_assets
       WHERE sha256 = ?
-        AND (? IS NULL OR storage_provider = ?)
       LIMIT 1
-    `).get(
-      sha256,
-      storageProvider ?? null,
-      storageProvider ?? null
-    ) as UploadedAssetRow | undefined;
+    `).get(sha256) as UploadedAssetRow | undefined;
     return row ? this.mapUploadedAssetRow(row) : undefined;
   }
 
@@ -613,7 +701,6 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
       INSERT INTO uploaded_assets (
         id,
         sha256,
-        storage_provider,
         storage_key,
         url,
         original_filename,
@@ -623,10 +710,9 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
         created_at,
         updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         sha256 = excluded.sha256,
-        storage_provider = excluded.storage_provider,
         storage_key = excluded.storage_key,
         url = excluded.url,
         original_filename = excluded.original_filename,
@@ -637,7 +723,6 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
     `).run(
       record.id,
       record.sha256,
-      record.storageProvider,
       record.storageKey,
       record.url,
       record.originalFilename ?? null,
@@ -740,7 +825,9 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
       lastBootAt: optionalString(row.last_boot_at),
       lastOnlineAt: optionalString(row.last_online_at),
       lastOfflineAt: optionalString(row.last_offline_at),
-      lastPolicyPushAt: optionalString(row.last_policy_push_at)
+      lastPolicyPushAt: optionalString(row.last_policy_push_at),
+      lastScreenshotAssetId: optionalString(row.last_screenshot_asset_id),
+      lastScreenshotCapturedAt: optionalString(row.last_screenshot_captured_at)
     };
   }
 
@@ -760,7 +847,6 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
     return {
       id: row.id,
       sha256: row.sha256,
-      storageProvider: row.storage_provider as UploadedAssetStorageProvider,
       storageKey: row.storage_key,
       url: row.url,
       originalFilename: optionalString(row.original_filename),
