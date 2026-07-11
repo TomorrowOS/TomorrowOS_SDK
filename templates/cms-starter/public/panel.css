@@ -430,8 +430,10 @@ button.danger {
 }
 
 .playlist-assets-hint {
-  margin: 0 0 0.75rem;
+  margin: 0;
+  padding: 0.65rem 1rem 0.75rem;
   font-size: 0.78rem;
+  line-height: 1.45;
 }
 
 .playlist-item {
@@ -441,6 +443,8 @@ button.danger {
   margin-bottom: 0.5rem;
   background: #fafaf9;
   position: relative;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .playlist-item--dragging {
@@ -501,17 +505,32 @@ button.danger {
 }
 
 .playlist-item-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 4.25rem) minmax(0, 1fr) minmax(0, 1fr);
   gap: 0.35rem;
-  align-items: center;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
 }
 
 .playlist-item-actions input[type="number"] {
-  width: 5rem;
+  width: 100%;
+  min-width: 0;
   font: inherit;
-  padding: 0.25rem 0.4rem;
+  padding: 0.28rem 0.35rem;
   border: 1px solid #d6d2cb;
   border-radius: 4px;
+}
+
+.playlist-item-actions button {
+  min-width: 0;
+  padding: 0.28rem 0.35rem;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .publish-bar {

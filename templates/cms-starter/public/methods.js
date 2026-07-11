@@ -808,9 +808,16 @@ function renderEditorAssets() {
       meta.textContent = `${item.type} · ${Math.round(item.durationMs / 1000)}s`;
     });
 
+    const downloadBtn = document.createElement("button");
+    downloadBtn.type = "button";
+    downloadBtn.className = "playlist-item-btn";
+    downloadBtn.textContent = "Download";
+    downloadBtn.title = "Download asset";
+    downloadBtn.addEventListener("click", () => void downloadMediaAsset(item));
+
     const removeBtn = document.createElement("button");
     removeBtn.type = "button";
-    removeBtn.className = "danger";
+    removeBtn.className = "danger playlist-item-btn";
     removeBtn.textContent = "Remove";
     removeBtn.addEventListener("click", () => {
       editorItems = editorItems.filter((x) => x.id !== item.id);
@@ -818,6 +825,7 @@ function renderEditorAssets() {
     });
 
     actions.appendChild(durInput);
+    actions.appendChild(downloadBtn);
     actions.appendChild(removeBtn);
     li.appendChild(name);
     li.appendChild(meta);
@@ -1679,6 +1687,70 @@ function closeScreenshotModal() {
   modal?.classList.add("hidden");
 }
 
+function openDownloadFailedModal(detail) {
+  const modal = document.getElementById("downloadFailedModal");
+  const message = document.getElementById("downloadFailedModalMessage");
+  if (!modal) return;
+  if (message) {
+    message.textContent = detail
+      ? `Could not download this asset: ${detail}`
+      : "Could not download this asset.";
+  }
+  modal.classList.remove("hidden");
+}
+
+function closeDownloadFailedModal() {
+  document.getElementById("downloadFailedModal")?.classList.add("hidden");
+}
+
+function sanitizeDownloadFilename(name) {
+  const base = String(name || "asset").trim() || "asset";
+  return base.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_");
+}
+
+async function downloadMediaAsset(item) {
+  const candidates = [];
+  const sameOriginPath = resolveVerificationMediaUrl(item.url);
+  if (sameOriginPath) candidates.push(sameOriginPath);
+  try {
+    const absolute = absoluteMediaUrl(item.url);
+    if (absolute && !candidates.includes(absolute)) candidates.push(absolute);
+  } catch (_) {}
+
+  if (candidates.length === 0) {
+    openDownloadFailedModal("Media URL is not available.");
+    return;
+  }
+
+  const filename = sanitizeDownloadFilename(item.name || item.url.split("/").pop() || "asset");
+
+  let lastError = "Network or browser error.";
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        lastError = `HTTP ${res.status}`;
+        continue;
+      }
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = filename;
+      anchor.style.display = "none";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+      return;
+    } catch (err) {
+      lastError = err?.message || lastError;
+    }
+  }
+
+  openDownloadFailedModal(lastError);
+}
+
 function startDevicePolling() {
   if (devicePollTimer) clearInterval(devicePollTimer);
   void fetchDevices();
@@ -1709,6 +1781,9 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   document.querySelectorAll("[data-close-screenshot-modal]").forEach((el) => {
     el.addEventListener("click", closeScreenshotModal);
+  });
+  document.querySelectorAll("[data-close-download-failed-modal]").forEach((el) => {
+    el.addEventListener("click", closeDownloadFailedModal);
   });
 
   document.getElementById("addAssetBtn")?.addEventListener("click", () => {

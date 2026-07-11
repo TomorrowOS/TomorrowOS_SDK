@@ -155,6 +155,23 @@
       </div>
     </div>
 
+    <div id="downloadFailedModal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-backdrop" data-close-download-failed-modal="1"></div>
+      <div class="modal-card">
+        <h2>Download failed</h2>
+        <p class="hint" id="downloadFailedModalMessage">Could not download this asset.</p>
+        <p class="hint">
+          For permanent, reliable storage of media assets, configure
+          <strong>Cloudinary</strong> on your CMS server (<code>CLOUDINARY_CLOUD_NAME</code>,
+          <code>CLOUDINARY_API_KEY</code>, <code>CLOUDINARY_API_SECRET</code>). Uploads stored on
+          Cloudinary use stable public URLs that are easier to download and share.
+        </p>
+        <div class="modal-actions">
+          <button type="button" data-close-download-failed-modal="1">Close</button>
+        </div>
+      </div>
+    </div>
+
     <script src="./methods.js" defer></script>
   </body>
 </html>
