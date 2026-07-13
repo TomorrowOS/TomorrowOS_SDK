@@ -69,6 +69,7 @@ type TomorrowOSEvent =
   | "device.unpaired"
   | "device.online"
   | "device.offline"
+  | "device.heartbeat"
   | "command.verified"
   | "command.failed";
 
@@ -363,6 +364,8 @@ export class TomorrowOS extends EventEmitter {
   private wss: WebSocketServer | null = null;
   private staticRoot: string | null = null;
   private staticIndexFile = "index.html";
+  /** Set when listen() starts — exposed to CMS panel for post-restart reconnect grace. */
+  private serverStartedAt: string | null = null;
 
   constructor(options: TomorrowOSOptions) {
     super();
@@ -437,11 +440,15 @@ export class TomorrowOS extends EventEmitter {
       meta?.bootUptimeSec != null
         ? resolveLastBootAt(bootAtFromUptimeSec(meta.bootUptimeSec), undefined)
         : resolveLastBootAt(meta?.bootedAt, undefined);
+    const deviceName = await this.resolveDeviceNameForPairing(
+      deviceId,
+      meta?.deviceName
+    );
 
     await this.store.setPairedDevice(deviceId, {
       pairingToken,
       pairedAt,
-      deviceName: meta?.deviceName,
+      deviceName,
       platform: meta?.platform,
       system: meta?.system,
       playerVersion: meta?.playerVersion,
@@ -450,6 +457,9 @@ export class TomorrowOS extends EventEmitter {
       lastOnlineAt: this.isDeviceConnected(deviceId) ? now : undefined,
       lastOfflineAt: this.isDeviceConnected(deviceId) ? undefined : now
     });
+    if (deviceName) {
+      await this.seedRegistryDisplayNameIfEmpty(deviceId, deviceName);
+    }
     await this.store.deletePendingCode(normalized);
 
     const ws = this.devices.get(deviceId);
@@ -483,6 +493,10 @@ export class TomorrowOS extends EventEmitter {
 
     const paired = await this.store.getPairedDevice(id);
     const screenshotAssetId = paired?.lastScreenshotAssetId;
+
+    if (paired?.deviceName?.trim()) {
+      await this.persistRegistryDisplayName(id, paired.deviceName);
+    }
 
     await this.store.deletePairedDevice(id);
     this.pendingDeviceMeta.delete(id);
@@ -608,8 +622,46 @@ export class TomorrowOS extends EventEmitter {
       ...existing,
       deviceName: normalized
     });
+    await this.persistRegistryDisplayName(id, normalized);
 
     return { deviceId: id, deviceName: normalized };
+  }
+
+  /** Prefer CMS-saved display name; fall back to handshake hardware model on first pair. */
+  private async resolveDeviceNameForPairing(
+    deviceId: string,
+    handshakeName?: string
+  ): Promise<string | undefined> {
+    const reg = await this.store.getDeviceRegistry(deviceId);
+    const saved = reg?.displayName?.trim();
+    if (saved) return saved;
+    const fromHandshake = handshakeName?.trim();
+    return fromHandshake || undefined;
+  }
+
+  private async persistRegistryDisplayName(
+    deviceId: string,
+    displayName: string
+  ): Promise<void> {
+    const reg = await this.store.getDeviceRegistry(deviceId);
+    if (!reg) return;
+    await this.store.setDeviceRegistry(deviceId, {
+      ...reg,
+      displayName: displayName.trim()
+    });
+  }
+
+  /** First pair only — seed registry display name from device handshake when unset. */
+  private async seedRegistryDisplayNameIfEmpty(
+    deviceId: string,
+    displayName: string
+  ): Promise<void> {
+    const reg = await this.store.getDeviceRegistry(deviceId);
+    if (!reg || reg.displayName?.trim()) return;
+    await this.store.setDeviceRegistry(deviceId, {
+      ...reg,
+      displayName: displayName.trim()
+    });
   }
 
   private pushDeviceLog(deviceId: string, entry: DeviceLogEntry): void {
@@ -726,9 +778,6 @@ export class TomorrowOS extends EventEmitter {
 
     await this.store.setPairedDevice(deviceId, {
       ...existing,
-      deviceName:
-        (typeof msg.deviceName === "string" ? msg.deviceName : undefined) ??
-        existing.deviceName,
       platform,
       system,
       playerVersion,
@@ -792,8 +841,6 @@ export class TomorrowOS extends EventEmitter {
 
       if (result.status !== "success" || !result.data) return;
 
-      const model =
-        typeof result.data.model === "string" ? result.data.model : undefined;
       const firmware =
         typeof result.data.firmware === "string"
           ? result.data.firmware
@@ -806,7 +853,6 @@ export class TomorrowOS extends EventEmitter {
 
       await this.store.setPairedDevice(deviceId, {
         ...existing,
-        deviceName: model ?? existing.deviceName,
         system: formatDeviceSystemForFirmware(
           platform,
           firmware,
@@ -937,6 +983,8 @@ export class TomorrowOS extends EventEmitter {
     wss.on("connection", (ws: DeviceSocket) => {
       this.handleConnection(ws);
     });
+
+    this.serverStartedAt = new Date().toISOString();
 
     server.listen(port, host, () => {
       // eslint-disable-next-line no-console
@@ -1382,7 +1430,11 @@ export class TomorrowOS extends EventEmitter {
 
       if (req.method === "GET" && pathname === "/devices") {
         const devices = await this.listDevices();
-        sendJson(res, 200, { status: "success", devices });
+        sendJson(res, 200, {
+          status: "success",
+          devices,
+          serverStartedAt: this.serverStartedAt
+        });
         return;
       }
 
@@ -1856,6 +1908,24 @@ export class TomorrowOS extends EventEmitter {
             console.error("[TomorrowOS] pushLatestPolicy on resume failed:", err);
           });
         })();
+        return;
+      }
+
+      if (type === "device.ping") {
+        ws.send(
+          JSON.stringify({
+            type: "device.pong",
+            timestamp: new Date().toISOString()
+          })
+        );
+        const deviceId = ws.deviceId;
+        if (deviceId) {
+          const timestamp =
+            typeof msg.timestamp === "string" && msg.timestamp.trim()
+              ? msg.timestamp
+              : new Date().toISOString();
+          this.emit("device.heartbeat", { deviceId, timestamp });
+        }
         return;
       }
 

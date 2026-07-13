@@ -35,6 +35,7 @@ interface DeviceRegistryRow {
   serial_number: string | null;
   first_seen_at: number | null;
   last_hello_at: number | null;
+  display_name: string | null;
 }
 
 interface PairedDeviceRow {
@@ -211,6 +212,7 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
     this.addColumnIfMissing("paired_devices", "system_version TEXT");
     this.addColumnIfMissing("paired_devices", "last_screenshot_asset_id TEXT");
     this.addColumnIfMissing("paired_devices", "last_screenshot_captured_at TEXT");
+    this.addColumnIfMissing("device_registry", "display_name TEXT");
     this.migrateDropPlaylistVersionColumns();
     this.migrateDropUploadedAssetStorageProvider();
   }
@@ -486,22 +488,25 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
         code_created_at,
         serial_number,
         first_seen_at,
-        last_hello_at
+        last_hello_at,
+        display_name
       )
-      VALUES (?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(device_id) DO UPDATE SET
         permanent_pairing_code = excluded.permanent_pairing_code,
         code_created_at = excluded.code_created_at,
         serial_number = excluded.serial_number,
         first_seen_at = excluded.first_seen_at,
-        last_hello_at = excluded.last_hello_at
+        last_hello_at = excluded.last_hello_at,
+        display_name = excluded.display_name
     `).run(
       deviceId,
       record.permanentPairingCode,
       record.codeCreatedAt,
       record.serialNumber ?? null,
       record.firstSeenAt ?? null,
-      record.lastHelloAt ?? null
+      record.lastHelloAt ?? null,
+      record.displayName ?? null
     );
   }
 
@@ -809,7 +814,8 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
       codeCreatedAt: row.code_created_at,
       serialNumber: optionalString(row.serial_number),
       firstSeenAt: optionalNumber(row.first_seen_at),
-      lastHelloAt: optionalNumber(row.last_hello_at)
+      lastHelloAt: optionalNumber(row.last_hello_at),
+      displayName: optionalString(row.display_name)
     };
   }
 

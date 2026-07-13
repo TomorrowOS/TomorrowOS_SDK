@@ -28,6 +28,7 @@ interface DeviceRegistryRow {
   serial_number: string | null;
   first_seen_at: number | string | null;
   last_hello_at: number | string | null;
+  display_name: string | null;
 }
 
 interface PairedDeviceRow {
@@ -206,6 +207,9 @@ export class PostgresStore implements TomorrowOSMigratableStore {
 
       ALTER TABLE paired_devices
         ADD COLUMN IF NOT EXISTS last_screenshot_captured_at TEXT;
+
+      ALTER TABLE device_registry
+        ADD COLUMN IF NOT EXISTS display_name TEXT;
     `);
     await this.migrateDropPlaylistVersionColumns();
     await this.migrateDropUploadedAssetStorageProvider();
@@ -413,22 +417,25 @@ export class PostgresStore implements TomorrowOSMigratableStore {
         code_created_at,
         serial_number,
         first_seen_at,
-        last_hello_at
+        last_hello_at,
+        display_name
       )
-      VALUES ($1, $2, $3, $4, $5, $6)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       ON CONFLICT (device_id) DO UPDATE SET
         permanent_pairing_code = EXCLUDED.permanent_pairing_code,
         code_created_at = EXCLUDED.code_created_at,
         serial_number = EXCLUDED.serial_number,
         first_seen_at = EXCLUDED.first_seen_at,
-        last_hello_at = EXCLUDED.last_hello_at
+        last_hello_at = EXCLUDED.last_hello_at,
+        display_name = EXCLUDED.display_name
     `, [
       deviceId,
       record.permanentPairingCode,
       record.codeCreatedAt,
       record.serialNumber ?? null,
       record.firstSeenAt ?? null,
-      record.lastHelloAt ?? null
+      record.lastHelloAt ?? null,
+      record.displayName ?? null
     ]);
   }
 
@@ -768,7 +775,8 @@ export class PostgresStore implements TomorrowOSMigratableStore {
       codeCreatedAt: Number(row.code_created_at),
       serialNumber: optionalString(row.serial_number),
       firstSeenAt: optionalNumber(row.first_seen_at),
-      lastHelloAt: optionalNumber(row.last_hello_at)
+      lastHelloAt: optionalNumber(row.last_hello_at),
+      displayName: optionalString(row.display_name)
     };
   }
 

@@ -15,6 +15,8 @@ export interface DeviceRegistryRecord {
   serialNumber?: string;
   firstSeenAt?: number;
   lastHelloAt?: number;
+  /** CMS operator display name — survives unpair / re-pair. */
+  displayName?: string;
 }
 
 export interface PairedDeviceRecord {

@@ -27,10 +27,15 @@ let editingDeviceNameId = null;
 let editingDeviceNameValue = "";
 
 let devicePollTimer = null;
+/** @type {number|null} CMS server boot time (ms) from GET /devices. */
+let serverStartedAtMs = null;
+/** @type {ReturnType<typeof setTimeout>|null} */
+let reconnectGraceTimer = null;
 let uploadQueue = [];
 let uploadInProgress = false;
 
 const UPLOAD_MAX_RETRIES = 3;
+const DEVICE_RECONNECT_GRACE_MS = 60000;
 const UPLOAD_TIMEOUT_MS = 120000;
 
 function escapeHtml(value) {
@@ -71,13 +76,59 @@ function formatDateTimeSeconds(iso) {
   });
 }
 
-function formatDeviceOnlineLabel(device) {
-  if (!device.connected) return "Not active";
+function resolveDeviceConnectionState(device) {
+  if (device.connected) return "online";
+  if (serverStartedAtMs != null) {
+    const elapsed = Date.now() - serverStartedAtMs;
+    if (elapsed >= 0 && elapsed < DEVICE_RECONNECT_GRACE_MS) return "loading";
+  }
+  return "offline";
+}
+
+function statusLedClass(connectionState) {
+  if (connectionState === "online") return "status-led status-led--online";
+  if (connectionState === "loading") return "status-led status-led--loading";
+  return "status-led status-led--offline";
+}
+
+function statusLedTitle(connectionState) {
+  if (connectionState === "online") return "Device connected";
+  if (connectionState === "loading") return "Waiting for device to reconnect";
+  return "Device not connected";
+}
+
+function formatDeviceOnlineLabel(device, connectionState) {
+  if (connectionState === "loading") return "Reconnecting…";
+  if (connectionState !== "online") return "Not active";
   const bootIso = device.lastBootAt;
   if (!bootIso) return "Not active";
   const bootMs = new Date(bootIso).getTime();
   if (Number.isNaN(bootMs)) return "Not active";
   return formatDurationMs(Date.now() - bootMs);
+}
+
+function scheduleReconnectGraceRerender() {
+  if (reconnectGraceTimer) {
+    clearTimeout(reconnectGraceTimer);
+    reconnectGraceTimer = null;
+  }
+  if (serverStartedAtMs == null) return;
+
+  const hasLoadingDevice = devicesCache.some(
+    (device) => resolveDeviceConnectionState(device) === "loading"
+  );
+  if (!hasLoadingDevice) return;
+
+  const remaining = DEVICE_RECONNECT_GRACE_MS - (Date.now() - serverStartedAtMs);
+  if (remaining <= 0) {
+    renderDeviceCards();
+    return;
+  }
+
+  reconnectGraceTimer = setTimeout(() => {
+    reconnectGraceTimer = null;
+    renderDeviceCards();
+  }, remaining + 50);
 }
 
 function showResult(data) {
@@ -942,9 +993,18 @@ async function fetchDevices() {
   try {
     const res = await fetch("/devices");
     const data = await res.json();
+    if (typeof data.serverStartedAt === "string") {
+      const parsed = new Date(data.serverStartedAt).getTime();
+      if (!Number.isNaN(parsed)) {
+        const prev = serverStartedAtMs;
+        serverStartedAtMs = parsed;
+        if (prev !== parsed) scheduleReconnectGraceRerender();
+      }
+    }
     if (Array.isArray(data.devices)) {
       devicesCache = data.devices;
       renderDeviceCards();
+      scheduleReconnectGraceRerender();
     }
   } catch (err) {
     showResult({ status: "failed", error: err.message });
@@ -1010,8 +1070,12 @@ function renderDeviceCards() {
     header.className = "device-card-header";
     const headerMain = document.createElement("div");
     headerMain.className = "device-card-header-main";
+    const connectionState = resolveDeviceConnectionState(device);
     const led = document.createElement("span");
-    led.className = `status-led ${device.connected ? "status-led--online" : "status-led--offline"}`;
+    led.className = statusLedClass(connectionState);
+    led.title = statusLedTitle(connectionState);
+    led.setAttribute("role", "status");
+    led.setAttribute("aria-label", statusLedTitle(connectionState));
     const title = document.createElement("h3");
     title.className = "device-card-title";
     const isEditingName = editingDeviceNameId === device.deviceId;
@@ -1124,7 +1188,7 @@ function renderDeviceCards() {
     const metaSecondary = document.createElement("dl");
     metaSecondary.className = "device-meta device-meta--secondary";
     const secondaryRows = [
-      ["Device online", formatDeviceOnlineLabel(device)],
+      ["Device online", formatDeviceOnlineLabel(device, connectionState)],
       ["Last boot", formatDateTimeSeconds(device.lastBootAt)],
       ["Latest push", formatDateTimeSeconds(device.lastPolicyPushAt)],
       ["Latest error", device.latestErrorMessage || "—"],

@@ -200,6 +200,20 @@ body {
   box-shadow: 0 0 8px rgba(240, 68, 56, 0.45);
 }
 
+.status-led--loading {
+  background: transparent;
+  border: 2px solid #dcd9d4;
+  border-top-color: #6e6b67;
+  box-shadow: none;
+  animation: status-led-spin 0.75s linear infinite;
+}
+
+@keyframes status-led-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .device-meta {
   display: grid;
   gap: 0.35rem;
