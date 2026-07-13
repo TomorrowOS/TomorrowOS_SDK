@@ -1,6 +1,6 @@
 {
   "name": "@tomorrowos/sdk",
-  "version": "0.9.0",
+  "version": "0.9.2",
   "description": "TomorrowOS CMS server SDK - WebSocket transport, pairing, device commands, optional static CMS UI. Includes CLI (tomorrowos init / build) and starter templates.",
   "type": "module",
   "main": "./dist/index.js",

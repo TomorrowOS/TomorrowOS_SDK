@@ -1767,6 +1767,20 @@ function closeDownloadFailedModal() {
   document.getElementById("downloadFailedModal")?.classList.add("hidden");
 }
 
+function openDownloadPlayersModal() {
+  document.getElementById("downloadPlayersModal")?.classList.remove("hidden");
+}
+
+function closeDownloadPlayersModal() {
+  document.getElementById("downloadPlayersModal")?.classList.add("hidden");
+}
+
+function handlePlayerDownloadLinkClick(ev) {
+  ev.preventDefault();
+  const platform = ev.currentTarget?.dataset?.playerDownload || "unknown";
+  console.info(`[CMS] Player download link placeholder (${platform}) — URL not configured yet.`);
+}
+
 function sanitizeDownloadFilename(name) {
   const base = String(name || "asset").trim() || "asset";
   return base.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_");
@@ -1848,6 +1862,14 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   document.querySelectorAll("[data-close-download-failed-modal]").forEach((el) => {
     el.addEventListener("click", closeDownloadFailedModal);
+  });
+
+  document.getElementById("downloadPlayersBtn")?.addEventListener("click", openDownloadPlayersModal);
+  document.querySelectorAll("[data-close-download-players-modal]").forEach((el) => {
+    el.addEventListener("click", closeDownloadPlayersModal);
+  });
+  document.querySelectorAll("[data-player-download]").forEach((el) => {
+    el.addEventListener("click", handlePlayerDownloadLinkClick);
   });
 
   document.getElementById("addAssetBtn")?.addEventListener("click", () => {
