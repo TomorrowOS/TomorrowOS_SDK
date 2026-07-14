@@ -566,21 +566,32 @@ function parseScheduleDateTimeMs(dateStr, timeStr, defaultTime) {
   return Number.isNaN(ms) ? null : ms;
 }
 
+/** True when the playlist has no start/end date or time (always-on / default content). */
+function isUnscheduledPublishedPlaylist(playlist) {
+  const schedule = playlist?.schedule;
+  if (!schedule) return true;
+  return !(
+    schedule.startDate ||
+    schedule.endDate ||
+    schedule.start ||
+    schedule.end
+  );
+}
+
 function getPublishedPlaylistStartMs(playlist) {
   const schedule = playlist?.schedule;
-  if (!schedule) return null;
+  if (isUnscheduledPublishedPlaylist(playlist) || !schedule) return null;
   return parseScheduleDateTimeMs(schedule.startDate, schedule.start, "00:00");
 }
 
 function getPublishedPlaylistEndMs(playlist) {
   const schedule = playlist?.schedule;
-  if (!schedule) return null;
+  if (isUnscheduledPublishedPlaylist(playlist) || !schedule) return null;
   return parseScheduleDateTimeMs(schedule.endDate, schedule.end, "23:59");
 }
 
 function isPublishedPlaylistActiveNow(playlist, now = new Date()) {
-  const schedule = playlist?.schedule;
-  if (!schedule) return true;
+  if (isUnscheduledPublishedPlaylist(playlist)) return true;
   const nowMs = now.getTime();
   const startMs = getPublishedPlaylistStartMs(playlist);
   const endMs = getPublishedPlaylistEndMs(playlist);
@@ -589,24 +600,39 @@ function isPublishedPlaylistActiveNow(playlist, now = new Date()) {
   return true;
 }
 
+/**
+ * Green-light target for the device card.
+ * - Prefer an in-window scheduled playlist (latest start wins).
+ * - Else among always-on (no schedule) playlists, prefer the latest publishedAt
+ *   so a later publish overrides earlier ones in the activity indicator.
+ */
 function pickScheduledPlaylistForIndicator(playlists, now = new Date()) {
-  const active = (Array.isArray(playlists) ? playlists : []).filter((playlist) =>
-    isPublishedPlaylistActiveNow(playlist, now)
-  );
+  const list = Array.isArray(playlists) ? playlists : [];
+  const active = list
+    .map((playlist, index) => ({ playlist, index }))
+    .filter(({ playlist }) => isPublishedPlaylistActiveNow(playlist, now));
   if (!active.length) return null;
 
-  active.sort((a, b) => {
-    const aStart = getPublishedPlaylistStartMs(a);
-    const bStart = getPublishedPlaylistStartMs(b);
-    const aScore = aStart === null ? -Infinity : aStart;
-    const bScore = bStart === null ? -Infinity : bStart;
-    if (aScore !== bScore) return bScore - aScore;
-    const aPublished = new Date(a?.publishedAt || 0).getTime() || 0;
-    const bPublished = new Date(b?.publishedAt || 0).getTime() || 0;
-    return bPublished - aPublished;
+  const scheduled = active.filter(
+    ({ playlist }) => !isUnscheduledPublishedPlaylist(playlist)
+  );
+  // Match player: scheduled takeovers beat always-on; always-on uses latest publish.
+  const pool = scheduled.length ? scheduled : active;
+
+  pool.sort((a, b) => {
+    if (scheduled.length) {
+      const aStart = getPublishedPlaylistStartMs(a.playlist) ?? 0;
+      const bStart = getPublishedPlaylistStartMs(b.playlist) ?? 0;
+      if (aStart !== bStart) return bStart - aStart;
+    }
+    const aPublished = new Date(a.playlist?.publishedAt || 0).getTime() || 0;
+    const bPublished = new Date(b.playlist?.publishedAt || 0).getTime() || 0;
+    if (aPublished !== bPublished) return bPublished - aPublished;
+    // Same publish time → later entry in the assignments list (last published) wins.
+    return b.index - a.index;
   });
 
-  return active[0] || null;
+  return pool[0]?.playlist || null;
 }
 
 function getSelectedPlaylist() {
@@ -1151,7 +1177,7 @@ function renderDeviceCards() {
         if (isPlaying) {
           const playingLight = document.createElement("span");
           playingLight.className = "playlist-playing-light";
-          playingLight.title = "Active now by schedule";
+          playingLight.title = "Active now";
           label.appendChild(playingLight);
         }
         const rm = document.createElement("button");
@@ -1292,7 +1318,9 @@ function openPublishModal(deviceId) {
     return;
   }
 
-  hint.textContent = `Device ${deviceId} — add playlists not yet on this device (snapshot at publish time).`;
+  hint.textContent =
+    `Device ${deviceId} — add playlists not yet on this device (snapshot at publish time). ` +
+    `Publishing a playlist with no start/end date/time replaces any previously published unscheduled playlist on this device.`;
   checklist.innerHTML = "";
 
   for (const pl of unpublished) {

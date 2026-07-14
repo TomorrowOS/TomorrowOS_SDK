@@ -74,6 +74,17 @@ function cloneSnapshot(
   };
 }
 
+/** True when the playlist has no start/end date or time (always-on / default content). */
+function isUnscheduledPlaylist(schedule?: PlaylistSchedule | null): boolean {
+  if (!schedule) return true;
+  return !(
+    schedule.startDate ||
+    schedule.endDate ||
+    schedule.start ||
+    schedule.end
+  );
+}
+
 export class PlaylistCatalog {
   constructor(private readonly store: TomorrowOSStore) {}
 
@@ -154,28 +165,51 @@ export class PlaylistCatalog {
 
     const existing = await this.store.getDeviceAssignments(deviceId);
     const existingById = new Map(existing.map((a) => [a.playlistId, a]));
-    const allIds = [...new Set([...existing.map((a) => a.playlistId), ...incoming])];
 
-    const assignments: DevicePlaylistAssignment[] = [];
-
-    for (const playlistId of allIds) {
-      if (!incoming.includes(playlistId)) {
-        const kept = existingById.get(playlistId);
-        if (kept) assignments.push(kept);
-        continue;
-      }
-
+    // Resolve incoming playlists first so we know whether this publish includes
+    // an always-on (no start/end) playlist that should override prior always-on ones.
+    const incomingSnapshots = new Map<string, PublishedPlaylistSnapshot>();
+    for (const playlistId of incoming) {
       const playlist = await this.store.getPlaylist(playlistId);
       if (!playlist || playlist.retired) {
         throw Object.assign(new Error(`Playlist not available: ${playlistId}`), {
           code: "PLAYLIST_NOT_FOUND"
         });
       }
+      incomingSnapshots.set(
+        playlistId,
+        cloneSnapshot(playlist, options.mediaBaseUrl)
+      );
+    }
+
+    const incomingHasUnscheduled = [...incomingSnapshots.values()].some((snap) =>
+      isUnscheduledPlaylist(snap.schedule)
+    );
+
+    const allIds = [...new Set([...existing.map((a) => a.playlistId), ...incoming])];
+    const publishedAt = new Date().toISOString();
+    const assignments: DevicePlaylistAssignment[] = [];
+
+    for (const playlistId of allIds) {
+      if (!incoming.includes(playlistId)) {
+        const kept = existingById.get(playlistId);
+        if (!kept) continue;
+        // Later publish of an unscheduled playlist replaces earlier unscheduled ones.
+        // Scheduled (dated) assignments are preserved.
+        if (
+          incomingHasUnscheduled &&
+          isUnscheduledPlaylist(kept.snapshot.schedule)
+        ) {
+          continue;
+        }
+        assignments.push(kept);
+        continue;
+      }
 
       assignments.push({
         playlistId,
-        publishedAt: new Date().toISOString(),
-        snapshot: cloneSnapshot(playlist, options.mediaBaseUrl)
+        publishedAt,
+        snapshot: incomingSnapshots.get(playlistId)!
       });
     }
 
