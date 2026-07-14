@@ -34,6 +34,13 @@ import {
 } from "./cloudinary-storage.js";
 import { probeVideoDurationMs } from "./media-probe.js";
 import { contentHashHex, storeUploadIfNeeded } from "./upload-storage.js";
+import { buildServerStatus } from "./server-status.js";
+export type {
+  ConnectorState,
+  ConnectorStatus,
+  ServerStatusReport,
+  StatusBlocker
+} from "./server-status.js";
 
 export interface TomorrowOSBrand {
   name?: string;
@@ -1389,6 +1396,15 @@ export class TomorrowOS extends EventEmitter {
       if (req.method === "GET" && pathname === "/brand.json") {
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(this.brand));
+        return;
+      }
+
+      if (req.method === "GET" && pathname === "/status") {
+        const report = await buildServerStatus({
+          store: this.store,
+          staticRoot: this.staticRoot
+        });
+        sendJson(res, 200, report as unknown as Record<string, unknown>);
         return;
       }
 

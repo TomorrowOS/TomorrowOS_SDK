@@ -27,6 +27,16 @@
       </aside>
 
       <main class="panel-main">
+        <section class="card server-status-card" id="serverStatusSection" aria-live="polite">
+          <div class="server-status-header">
+            <h2>Server status</h2>
+            <button type="button" id="serverStatusRefreshBtn" title="Refresh status">Refresh</button>
+          </div>
+          <p class="hint server-status-overall" id="serverStatusOverall">Checking connectors…</p>
+          <ul class="server-status-list" id="serverStatusList"></ul>
+          <div id="serverStatusBlockers" class="server-status-blockers hidden"></div>
+        </section>
+
         <section class="card">
           <h2>Pair device</h2>
           <p class="hint">Enter the 6-character code on the screen (A–Z or 0–9).</p>

@@ -6,6 +6,13 @@ export type {
   TomorrowOSBrand,
   TomorrowOSOptions
 } from "./tomorrowos.js";
+export type {
+  ConnectorState,
+  ConnectorStatus,
+  ServerStatusReport,
+  StatusBlocker
+} from "./server-status.js";
+export { buildServerStatus } from "./server-status.js";
 
 export type {
   DevicePlaylistAssignment,

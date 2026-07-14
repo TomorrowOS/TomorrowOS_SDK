@@ -109,3 +109,11 @@ export async function deleteCloudinaryAsset(
     resource_type: resourceType
   });
 }
+
+/** Lightweight credential / reachability check for CMS status UI. */
+export async function pingCloudinary(
+  config: CloudinaryStorageConfig
+): Promise<void> {
+  configureCloudinary(config);
+  await cloudinary.api.ping();
+}

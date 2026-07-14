@@ -27,6 +27,7 @@ let editingDeviceNameId = null;
 let editingDeviceNameValue = "";
 
 let devicePollTimer = null;
+let serverStatusTimer = null;
 /** @type {number|null} CMS server boot time (ms) from GET /devices. */
 let serverStartedAtMs = null;
 /** @type {ReturnType<typeof setTimeout>|null} */
@@ -1857,10 +1858,167 @@ async function downloadMediaAsset(item) {
   openDownloadFailedModal(lastError);
 }
 
+function connectorStateLabel(state) {
+  if (state === "ok") return "OK";
+  if (state === "warn") return "Warning";
+  if (state === "missing") return "Not set";
+  return "Error";
+}
+
+function overallStatusCopy(overall) {
+  if (overall === "ok") return "All connectors look healthy.";
+  if (overall === "degraded") {
+    return "CMS is running with warnings — review media or database durability below.";
+  }
+  if (overall === "blocked") {
+    return "Setup incomplete — fix the blockers below so pairing and media work reliably.";
+  }
+  return "Checking connectors…";
+}
+
+function renderServerStatus(report) {
+  const section = document.getElementById("serverStatusSection");
+  const list = document.getElementById("serverStatusList");
+  const overallEl = document.getElementById("serverStatusOverall");
+  const blockersEl = document.getElementById("serverStatusBlockers");
+  if (!section || !list || !overallEl || !blockersEl) return;
+
+  const overall = report?.overall || "blocked";
+  section.classList.remove(
+    "server-status-card--ok",
+    "server-status-card--degraded",
+    "server-status-card--blocked"
+  );
+  section.classList.add(`server-status-card--${overall}`);
+  overallEl.textContent = overallStatusCopy(overall);
+
+  list.innerHTML = "";
+  const connectors = Array.isArray(report?.connectors) ? report.connectors : [];
+  for (const connector of connectors) {
+    const li = document.createElement("li");
+    li.className = "server-status-row";
+
+    const main = document.createElement("div");
+    main.className = "server-status-row-main";
+
+    const label = document.createElement("span");
+    label.className = "server-status-label";
+    label.textContent = connector.label || connector.id || "Connector";
+    main.appendChild(label);
+
+    if (connector.provider) {
+      const provider = document.createElement("span");
+      provider.className = "server-status-provider";
+      provider.textContent = connector.provider;
+      main.appendChild(provider);
+    }
+
+    const badge = document.createElement("span");
+    const state = connector.state || "error";
+    badge.className = `server-status-badge server-status-badge--${state}`;
+    badge.textContent = connectorStateLabel(state);
+
+    const detail = document.createElement("p");
+    detail.className = "server-status-detail";
+    detail.textContent = connector.detail || "";
+
+    li.appendChild(main);
+    li.appendChild(badge);
+    li.appendChild(detail);
+    list.appendChild(li);
+  }
+
+  const blockers = Array.isArray(report?.blockers) ? report.blockers : [];
+  blockersEl.innerHTML = "";
+  if (blockers.length === 0) {
+    blockersEl.classList.add("hidden");
+    return;
+  }
+
+  blockersEl.classList.remove("hidden");
+  for (const blocker of blockers) {
+    const card = document.createElement("div");
+    card.className = "server-status-blocker";
+
+    const title = document.createElement("h3");
+    title.textContent = blocker.title || "Connector issue";
+
+    const message = document.createElement("p");
+    message.textContent = blocker.message || "";
+
+    const fix = document.createElement("p");
+    fix.className = "server-status-blocker-fix";
+    fix.textContent = blocker.fixHint
+      ? `How to fix: ${blocker.fixHint}`
+      : "How to fix: update Secrets / env and restart the CMS.";
+
+    card.appendChild(title);
+    card.appendChild(message);
+    card.appendChild(fix);
+    blockersEl.appendChild(card);
+  }
+}
+
+async function fetchServerStatus() {
+  try {
+    const res = await fetch("/status", { cache: "no-store" });
+    const data = await res.json();
+    if (!res.ok) {
+      renderServerStatus({
+        overall: "blocked",
+        connectors: [
+          {
+            id: "server",
+            label: "Server",
+            state: "error",
+            detail: data?.error || `HTTP ${res.status}`
+          }
+        ],
+        blockers: [
+          {
+            connectorId: "server",
+            title: "Could not load server status",
+            message: data?.error || `HTTP ${res.status}`,
+            fixHint: "Confirm the CMS is running with @tomorrowos/sdk that includes GET /status."
+          }
+        ]
+      });
+      return;
+    }
+    renderServerStatus(data);
+  } catch (err) {
+    renderServerStatus({
+      overall: "blocked",
+      connectors: [
+        {
+          id: "server",
+          label: "Server",
+          state: "error",
+          detail: err?.message || "Network error"
+        }
+      ],
+      blockers: [
+        {
+          connectorId: "server",
+          title: "CMS unreachable",
+          message: err?.message || "Network error",
+          fixHint: "Start the CMS (`npm run start`) and reload this page."
+        }
+      ]
+    });
+  }
+}
+
 function startDevicePolling() {
   if (devicePollTimer) clearInterval(devicePollTimer);
   void fetchDevices();
   devicePollTimer = setInterval(() => void fetchDevices(), 8000);
+}
+
+function startServerStatusPolling() {
+  if (serverStatusTimer) clearInterval(serverStatusTimer);
+  void fetchServerStatus();
+  serverStatusTimer = setInterval(() => void fetchServerStatus(), 30000);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -1876,6 +2034,11 @@ document.addEventListener("DOMContentLoaded", () => {
   updatePlaylistEditorVisibility();
   void fetchPlaylists();
   startDevicePolling();
+  startServerStatusPolling();
+
+  document
+    .getElementById("serverStatusRefreshBtn")
+    ?.addEventListener("click", () => void fetchServerStatus());
 
   document.getElementById("newPlaylistBtn")?.addEventListener("click", newPlaylistDraft);
   document.getElementById("savePlaylistBtn")?.addEventListener("click", () => void saveCurrentPlaylist());

@@ -118,6 +118,153 @@ body {
   color: #666;
 }
 
+.server-status-card {
+  border-color: #e4e1dc;
+}
+
+.server-status-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+
+.server-status-header h2 {
+  margin: 0;
+}
+
+.server-status-header button {
+  font-size: 0.78rem;
+  padding: 0.35rem 0.65rem;
+}
+
+.server-status-overall {
+  margin-bottom: 0.65rem;
+}
+
+.server-status-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.server-status-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.35rem 0.75rem;
+  align-items: baseline;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #ece8e2;
+  border-radius: 8px;
+  background: #fafaf9;
+}
+
+.server-status-row-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.55rem;
+  min-width: 0;
+}
+
+.server-status-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #0a0908;
+}
+
+.server-status-provider {
+  font-size: 0.72rem;
+  color: #888;
+}
+
+.server-status-detail {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.75rem;
+  color: #555;
+  line-height: 1.4;
+}
+
+.server-status-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 0.18rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.server-status-badge--ok {
+  color: #067647;
+  background: #ecfdf3;
+  border-color: #abefc6;
+}
+
+.server-status-badge--warn {
+  color: #b54708;
+  background: #fffaeb;
+  border-color: #fedf89;
+}
+
+.server-status-badge--error,
+.server-status-badge--missing {
+  color: #b42318;
+  background: #fff5f5;
+  border-color: #fecdca;
+}
+
+.server-status-blockers {
+  margin-top: 0.75rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.server-status-blocker {
+  padding: 0.7rem 0.8rem;
+  border-radius: 8px;
+  border: 1px solid #fecdca;
+  background: #fff8f7;
+}
+
+.server-status-blocker h3 {
+  margin: 0 0 0.3rem;
+  font-size: 0.85rem;
+  color: #b42318;
+}
+
+.server-status-blocker p {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #444;
+  line-height: 1.45;
+}
+
+.server-status-blocker p + p {
+  margin-top: 0.35rem;
+}
+
+.server-status-blocker-fix {
+  color: #0a0908;
+}
+
+.server-status-card--ok {
+  border-color: #abefc6;
+}
+
+.server-status-card--degraded {
+  border-color: #fedf89;
+}
+
+.server-status-card--blocked {
+  border-color: #fecdca;
+}
+
 .devices-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(308px, 1fr));

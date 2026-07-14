@@ -12,7 +12,7 @@ When a human pastes a prompt like this, **read this file and start Question 1 im
 ```text
 Follow @tomorrowos/sdk REPLIT_SETUP.md and set up my TomorrowOS CMS.
 Ask only the questions listed in REPLIT_SETUP.md, in order. Do not use LLM_PROMPT.md.
-Artifact kind must be **web** (never **api**). Question 4 only updates **brand.json**.
+Artifact kind must be **web** (never **api**). Question 3 only updates **brand.json**.
 After all setup questions are answered (including Cloudinary Secrets if you chose Cloudinary), configure and start — minimal verification only (Web app type + Preview at /). **Never test Supabase connection** — save `SUPABASE_URL` and move on. No Supabase or WebSocket tests.
 Do not skip steps.
 ```
@@ -58,21 +58,20 @@ Replit Agent must ask **only** the questions defined in **this file**, in **this
 
 | Step | Section | When |
 |------|---------|------|
-| 1 | **Question 1** — How many screens / devices? | Always |
-| 2 | **Question 2** — Supabase connection | Only if answer to Q1 is **> 5** |
-| 3 | **Question 3** — Media storage (+ Cloudinary Secrets if chosen) | Always (after Q1 or Q2) |
-| 4 | **Question 4** — Brand / TomorrowOS app look | Always last, before execution |
+| 1 | **Question 1** — Supabase connection string | Always |
+| 2 | **Question 2** — Media storage (+ Cloudinary Secrets if chosen) | Always (after Q1) |
+| 3 | **Question 3** — Brand / TomorrowOS app look | Always last, before execution |
 
-**That is the complete list.** There are no other setup questions. There is **no** “Question 3b” — Cloudinary credentials are collected **inside Question 3**, immediately after the user chooses Cloudinary.
+**That is the complete list.** There are no other setup questions. **Do not** ask how many screens / devices. There is **no** “Question 2b” — Cloudinary credentials are collected **inside Question 2**, immediately after the user chooses Cloudinary.
 
-**Critical:** Question 3 is **not complete** when the user says “Cloudinary” or “yes”. You **must** immediately show the Cloudinary Secrets input (same step — do **not** label a new question) and collect `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` **before** Question 4. Do **not** skip to branding with placeholder or invented credentials.
+**Critical:** Question 2 is **not complete** when the user says “Cloudinary” or “yes”. You **must** immediately show the Cloudinary Secrets input (same step — do **not** label a new question) and collect `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` **before** Question 3. Do **not** skip to branding with placeholder or invented credentials.
 
 
-If the user volunteers extra info early (e.g. brand name before Q4), **record it** and still ask the current question’s required fields you do not yet have. Do not skip ahead to execution until Q1–Q4 are complete (Question 3 includes Cloudinary Secrets when applicable).
+If the user volunteers extra info early (e.g. brand name before Q3), **record it** and still ask the current question’s required fields you do not yet have. Do not skip ahead to execution until Q1–Q3 are complete (Question 2 includes Cloudinary Secrets when applicable).
 
 If the user says “just set it up, don’t ask questions,” respond:
 
-> I need a few quick answers from REPLIT_SETUP.md (screen count, media storage — plus Cloudinary credentials if you choose Cloudinary — and branding). It takes about a minute and ensures the CMS deploys correctly on Replit.
+> I need a few quick answers from REPLIT_SETUP.md (Supabase connection string, media storage — plus Cloudinary credentials if you choose Cloudinary — and branding). It takes about a minute and ensures the CMS deploys correctly on Replit.
 
 Then ask **Question 1** — do not switch to `LLM_PROMPT.md`.
 
@@ -80,9 +79,9 @@ Then ask **Question 1** — do not switch to `LLM_PROMPT.md`.
 
 ## Hard rules
 
-1. **Ask only REPLIT_SETUP.md questions 1–4** (see **Questionnaire scope**). Never use `LLM_PROMPT.md` on Replit.
-2. **One question at a time.** Wait for the user’s answer before asking the next question (unless they already answered several in one message). **Exception:** If the user chooses Cloudinary in Question 3, **stay on Question 3** and immediately show the Secrets form — do **not** open a separate “3b” step or announce a new question number.
-3. **Do not invent** screen counts, Cloudinary credentials, Supabase URLs, or brand colours.
+1. **Ask only REPLIT_SETUP.md questions 1–3** (see **Questionnaire scope**). Never use `LLM_PROMPT.md` on Replit.
+2. **One question at a time.** Wait for the user’s answer before asking the next question (unless they already answered several in one message). **Exception:** If the user chooses Cloudinary in Question 2, **stay on Question 2** and immediately show the Secrets form — do **not** open a separate “2b” step or announce a new question number.
+3. **Do not invent** Cloudinary credentials, Supabase URLs, or brand colours. **Do not ask** screen / device count.
 4. **Do not use Replit’s reserved `DATABASE_URL` Secret for Supabase.** On Replit, `DATABASE_URL` is often pre-claimed. Always use **`SUPABASE_URL`** for TomorrowOS ↔ Supabase.
 5. **Prefer `npx @tomorrowos/sdk init`** (or the package’s `templates/cms-starter`) as the project seed. Do not rebuild pairing, WebSocket, or playlist APIs from scratch.
 6. **Never commit secrets** into git. Put credentials only in Replit **Secrets** (and optionally mirror non-secret flags in `.env` that reference env vars).
@@ -91,12 +90,11 @@ Then ask **Question 1** — do not switch to `LLM_PROMPT.md`.
 9. **Supabase: configure only — never test.** Save `SUPABASE_URL` + `TOMORROWOS_STORE=supabase` and proceed. **Do not** ping Postgres, run `psql`, start the server solely to verify DB connectivity, or treat log errors like `ENOTFOUND` / `database connection failure` in **Replit dev / Preview** as a failed setup. Supabase often works only after **Publish** (production networking), not in the dev shell.
 10. **Artifact kind = `web` only.** **`kind = "api"` is forbidden** for the TomorrowOS CMS artifact. See **IRON RULE** above. Setup is incomplete if Publish would still see an `api` artifact.
 
-**Question order after Q1:**
+**Question order (always):**
 
-- If **≤ 5 screens:** Q1 → Q3 → Q4 → execution checklist
-- If **> 5 screens:** Q1 → Q2 → Q3 → Q4 → execution checklist
+- Q1 → Q2 → Q3 → execution checklist
 
-Never insert extra questions between these steps. When the user chooses Cloudinary, **Question 3 continues** with the Secrets form immediately — then proceed to Q4 only after secrets are saved.
+Never insert extra questions between these steps. When the user chooses Cloudinary, **Question 2 continues** with the Secrets form immediately — then proceed to Q3 only after secrets are saved.
 
 ---
 
@@ -232,7 +230,7 @@ Allowed extras (optional): `"build-player": "tomorrowos build --platform tizen"`
     "node": ">=20"
   },
   "dependencies": {
-    "@tomorrowos/sdk": "^0.9.4",
+    "@tomorrowos/sdk": "^0.9.8",
     "dotenv": "^17.2.3",
     "tsx": "^4.19.0"
   },
@@ -330,13 +328,13 @@ Replace `YOUR-REPLIT-DOMAIN` with the actual published hostname (e.g. `my-cms.re
 
 ## Post-Q&A: minimal verification only
 
-After Questions 1–4, **configure → `npm install` → `npm run start` → done.**
+After Questions 1–3, **configure → `npm install` → `npm run start` → done.**
 
 ### Supabase: never test in Replit dev (mandatory)
 
-When the user chose Supabase (>5 screens), setup is **save credentials + wire `server.ts` + start** — **nothing else**.
+Setup always uses Supabase: **save credentials + wire `server.ts` + start** — **nothing else**.
 
-**Forbidden after Q&A (and after Question 2):**
+**Forbidden after Q&A (and after Question 1):**
 
 - ❌ “Testing Supabase connection…”
 - ❌ `psql`, `pg`, Prisma `db pull`, or any one-off DB probe script
@@ -374,34 +372,17 @@ Then (and only then) check: API vs Web type → `.replit` ports/`deploymentTarge
 
 ---
 
-## Question 1 — How many screens / devices?
+## Question 1 — Supabase connection (always)
 
-> **This is the first and only “screen count” question.** Do not re-ask later.
+> **This is the first setup question.** Always configure Supabase. **Do not** ask how many screens / devices.
+
+**Preferred on Replit:** open an **input / Secrets** UI where the user pastes the connection string into a field for:
+
+- `SUPABASE_URL`
 
 **Ask exactly (copy wording; do not substitute LLM_PROMPT questions):**
 
-> How many TomorrowOS screens (devices) do you expect to manage with this CMS?
->
-> - **5 or fewer** → I’ll use the default **SQLite** database (simple, good for demos and small venues).
-> - **More than 5** → I’ll configure **Supabase (Postgres)** so pairings and playlists scale more reliably.
-
-**Branching:**
-
-| Answer | Store driver | Next |
-|--------|--------------|------|
-| ≤ 5 | `TOMORROWOS_STORE=sqlite` | Skip Question 2 → go to Question 3 |
-| > 5 | `TOMORROWOS_STORE=supabase` | Ask Question 2 |
-| Unclear | Ask again | Do not proceed |
-
-**Store in `brand.json`:** `cms.expectedScreens` (number), `cms.hostingTarget`: `"here"`.
-
----
-
-## Question 2 — Supabase connection (only if > 5 screens)
-
-**Ask exactly:**
-
-> Paste your Supabase Postgres connection string. I will store it as the Replit Secret **`SUPABASE_URL`** (not `DATABASE_URL` — that name is often reserved by Replit).
+> Paste your Supabase Postgres connection string below. I will store it as the Replit Secret **`SUPABASE_URL`** (not `DATABASE_URL` — that name is often reserved by Replit).
 >
 > Example shape: `postgresql://postgres.[PROJECT]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres`
 >
@@ -449,13 +430,16 @@ DATABASE_SSL=true
 ```
 
 5. **Do not** write the real password into committed files.
-6. **Do not** test the Supabase connection after saving the Secret — **configuration only**. No probe, no `npm run start` just to verify DB, no fixing “connection failure” in dev. Saving `SUPABASE_URL` completes Question 2.
+6. **Do not** test the Supabase connection after saving the Secret — **configuration only**. No probe, no `npm run start` just to verify DB, no fixing “connection failure” in dev. Saving `SUPABASE_URL` completes Question 1.
+7. **Do not** proceed to Question 2 until `SUPABASE_URL` is saved.
 
-If the user refuses Supabase but chose > 5 screens, warn them SQLite on Replit is fragile for fleets, then offer SQLite only after they confirm.
+If the user refuses Supabase, warn that Replit fleets need a durable Postgres store, then offer SQLite only after they explicitly confirm.
+
+**Store in `brand.json` later (Question 3):** `cms.hostingTarget`: `"here"`. Do **not** ask for `expectedScreens`; leave a default (e.g. `5`) when writing `brand.json`.
 
 ---
 
-## Question 3 — Media storage (uploads / thumbnails)
+## Question 2 — Media storage (uploads / thumbnails)
 
 ### Step A — Ask storage choice
 
@@ -471,9 +455,9 @@ If the user refuses Supabase but chose > 5 screens, warn them SQLite on Replit i
 >
 > Do you want me to set up **Cloudinary**? (yes / no)
 
-### Step B — If YES / Cloudinary (same Question 3 — no “3b”, no extra question)
+### Step B — If YES / Cloudinary (same Question 2 — no “2b”, no extra question)
 
-**Do this immediately** when the user chooses Cloudinary. **Do not** say “Question 3b”, “next step”, or “Great — I’ll use Cloudinary” as a separate message before the form. **Go straight to the Secrets input.**
+**Do this immediately** when the user chooses Cloudinary. **Do not** say “Question 2b”, “next step”, or “Great — I’ll use Cloudinary” as a separate message before the form. **Go straight to the Secrets input.**
 
 **Preferred on Replit:** open the **Replit Secrets** UI with fields for:
 
@@ -497,10 +481,10 @@ If the user refuses Supabase but chose > 5 screens, warn them SQLite on Replit i
 1. Save Replit Secrets: `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` (and optional `CLOUDINARY_FOLDER`).
 2. **Do not** write real secrets into committed files.
 3. **Do not** invent or placeholder credentials.
-4. **Do not** proceed to Question 4 until all three required Secrets exist.
+4. **Do not** proceed to Question 3 until all three required Secrets exist.
 5. **Do not** run a Cloudinary upload test — configuration only.
 
-**If the user does not have a Cloudinary account yet:** tell them to sign up at cloudinary.com and return with API keys. **Wait** on Question 3 — do not skip to Question 4.
+**If the user does not have a Cloudinary account yet:** tell them to sign up at cloudinary.com and return with API keys. **Wait** on Question 2 — do not skip to Question 3.
 
 The SDK auto-detects these env vars and uploads media to Cloudinary. New uploads will return `https://res.cloudinary.com/...` URLs.
 
@@ -513,17 +497,15 @@ The SDK auto-detects these env vars and uploads media to Cloudinary. New uploads
 3. Warn: if Object Storage IAM denies `storage.objects.create`, uploads will fail with a Google Cloud Storage permission error — fix Object Storage permissions or switch to Cloudinary.
 4. Do **not** invent Cloudinary credentials.
 
-**Also persist metadata:** keep `data/tomorrowos.db` (SQLite path) on durable storage when using SQLite.
-
 ---
 
-## Question 4 — Brand / TomorrowOS app look (`brand.json` only)
+## Question 3 — Brand / TomorrowOS app look (`brand.json` only)
 
-> **Scope:** Question 4 answers **only** update **`brand.json`** — colours, name, tagline, logo path, `cms.expectedScreens`, etc. They configure how the **TomorrowOS player app** looks and metadata flags.
+> **Scope:** Question 3 answers **only** update **`brand.json`** — colours, name, tagline, logo path, etc. They configure how the **TomorrowOS player app** looks and metadata flags.
 >
-> **Question 4 does NOT affect:** Replit Publish, artifact `kind`, `.replit`, `server.ts`, Secrets, Supabase, Cloudinary, ports, deployment target, or CMS server wiring. **Never** change deploy/runtime config based on branding answers.
+> **Question 3 does NOT affect:** Replit Publish, artifact `kind`, `.replit`, `server.ts`, Secrets, Supabase, Cloudinary, ports, deployment target, or CMS server wiring. **Never** change deploy/runtime config based on branding answers.
 
-> **This is the only branding / platform / use-case question block.** Do not ask separate LLM_PROMPT “target platform”, “use case”, or “hosting” questions before this.
+> **This is the only branding / platform / use-case question block.** Do not ask separate LLM_PROMPT “target platform”, “use case”, or “hosting” questions before this. **Do not** ask screen count.
 
 **Ask exactly (one message; user may answer in one reply):**
 
@@ -568,7 +550,7 @@ If the user only gives a name and primary colour, use defaults for the rest and 
 }
 ```
 
-Set `cms.expectedScreens` from Question 1 (do not ask screen count again). Always set `cms.hostingTarget` to `"here"` on Replit without asking. Set `cmsEndpoint` only if the user already knows their public `wss://…replit.app` URL; otherwise leave it out and tell them to pair TVs using the published HTTPS URL (player converts `https://` → `wss://`).
+Do **not** ask for screen count. Keep a default `cms.expectedScreens` (e.g. `5`) unless the user already volunteered a number. Always set `cms.hostingTarget` to `"here"` on Replit without asking. Set `cmsEndpoint` only if the user already knows their public `wss://…replit.app` URL; otherwise leave it out and tell them to pair TVs using the published HTTPS URL (player converts `https://` → `wss://`).
 
 ---
 
@@ -593,14 +575,7 @@ If `init` is inappropriate (existing customised project), merge carefully:
 
 ### B. Apply store + media Secrets
 
-**SQLite (≤5):**
-
-```env
-TOMORROWOS_STORE=sqlite
-TOMORROWOS_DB_PATH=./data/tomorrowos.db
-```
-
-**Supabase (>5):**
+**Supabase (always from Question 1):**
 
 ```env
 TOMORROWOS_STORE=supabase
@@ -669,8 +644,8 @@ Only investigate further if Preview is empty, server crashed, or user reports Pu
 
 ### Forbidden questionnaire sources
 
-- **`LLM_PROMPT.md`** — not used on Replit setup; its five questions are **replaced** by REPLIT_SETUP Questions 1–4
-- Standalone “target platform” / “hosting target” / “use case” prompts outside Question 4
+- **`LLM_PROMPT.md`** — not used on Replit setup; its questions are **replaced** by REPLIT_SETUP Questions 1–3
+- Standalone “target platform” / “hosting target” / “use case” / **screen count** prompts outside Question 3
 
 Do **not** ask the user how to implement:
 
@@ -685,24 +660,23 @@ Do **not**:
 - Change the production start command away from `tsx server.ts` / `npm run start`
 - Point Supabase at Replit’s reserved `DATABASE_URL` when `SUPABASE_URL` should be used
 - Skip Cloudinary recommendation without stating the persistence tradeoff
-- **Skip Cloudinary Secrets** after the user chooses Cloudinary — always collect `CLOUDINARY_*` inside Question 3 before Question 4
-- **Announce “Question 3b”** or a separate follow-up question — show the Secrets form immediately instead
+- **Skip Cloudinary Secrets** after the user chooses Cloudinary — always collect `CLOUDINARY_*` inside Question 2 before Question 3
+- **Announce “Question 2b”** or a separate follow-up question — show the Secrets form immediately instead
 - Claim uploads are “permanent” on Replit local disk without Object Storage or Cloudinary
 - Leave `tsx` only in `devDependencies` if the Deploy pipeline installs production deps only
 - Use Canvas preview as the primary CMS verification surface
 - Serve a different app or API-only response at `/` instead of the Control Panel
 - Create the Repl as **API-only** or publish with **Static Deployment** only
 - Set or leave artifact **`kind = "api"`** for the TomorrowOS CMS
-- Change `.replit`, `server.ts`, Secrets, or deployment config based on **Question 4** branding answers (those go in **`brand.json` only**)
+- Change `.replit`, `server.ts`, Secrets, or deployment config based on **Question 3** branding answers (those go in **`brand.json` only**)
 - Omit `[[ports]]` / `deploymentTarget` from `.replit` when setting up for Publish
 - Run **Supabase connection tests**, **WebSocket console tests**, or other post-setup smoke tests unless Preview fails or the user asks
 - **Debug or “fix” Supabase** because dev logs show `getaddrinfo ENOTFOUND` or `database connection failure` — save config and finish setup instead
+- Ask how many screens / devices (≤5 vs >5) — always start with Supabase
 
 ---
 
-## SQLite path (≤5) — `server.ts` reference
-
-Default starter is fine:
+## SQLite fallback — `server.ts` reference (only if user refuses Supabase)
 
 ```ts
 const store = createTomorrowOSStore({
@@ -738,14 +712,16 @@ TOMORROWOS_STORE=sqlite
 
 ## Protocol version
 
-`replit-setup/1.7` — aligned with TomorrowOS protocol `1.0` and `@tomorrowos/sdk` store drivers `sqlite` | `supabase` | `postgres` | `memory`.
+`replit-setup/1.8` — aligned with TomorrowOS protocol `1.0` and `@tomorrowos/sdk` store drivers `sqlite` | `supabase` | `postgres` | `memory`.
 
-**Changelog 1.7:** **IRON RULE** — artifact **`kind = "web"` only** (never `api`); Question 4 **only** writes `brand.json` (no deploy/server changes).
+**Changelog 1.8:** Question 1 is always Supabase connection string (input / Secret). Removed screen-count branching (≤5 SQLite vs >5 Supabase). Media storage is Question 2; branding is Question 3.
+
+**Changelog 1.7:** **IRON RULE** — artifact **`kind = "web"` only** (never `api`); Question 4 (**now 3**) **only** writes `brand.json` (no deploy/server changes).
 
 **Changelog 1.6:** **Never test Supabase** in Replit dev — `ENOTFOUND` in Preview logs is expected.
 
-**Changelog 1.5:** Cloudinary Secrets inside Question 3 — no “3b” step.
+**Changelog 1.5:** Cloudinary Secrets inside media question — no “3b” step.
 
-**Changelog 1.4:** mandatory Cloudinary credential collection before Question 4 (superseded by 1.5 flow).
+**Changelog 1.4:** mandatory Cloudinary credential collection before branding (superseded by 1.5 flow).
 
 **Changelog 1.3:** minimal post-Q&A verification — no Supabase/WS smoke tests; prioritize **Web app vs API** only.
