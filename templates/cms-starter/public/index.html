@@ -23,6 +23,9 @@
           <button type="button" id="downloadPlayersBtn" class="download-players-trigger">
             Download Players
           </button>
+          <button type="button" id="updateSdkBtn" class="download-players-trigger">
+            Update SDK
+          </button>
         </div>
       </aside>
 
@@ -63,15 +66,16 @@
         <section class="card" id="cmsUrlSection">
           <h2>CMS URL for screens</h2>
           <p class="hint">
-            <strong>Local development only.</strong> Optional LAN override so TVs reach your PC (not localhost).
-            Hosted CMS (e.g. Replit) uses its public URL automatically — leave this empty there.
+            <strong>Local development only.</strong> Defaults to this PC’s LAN IP and listen port so TVs
+            can reach media (not localhost). Change and Save if the auto-detected address is wrong.
+            Hosted CMS (e.g. Replit) uses its public URL automatically — this section is hidden there.
           </p>
           <div class="row">
             <input
               id="cmsDeviceBaseUrl"
               type="text"
               style="flex: 1; min-width: 16rem"
-              placeholder="http://192.168.1.105:3000"
+              placeholder="Detecting LAN address…"
             />
             <button type="button" onclick="saveCmsDeviceBaseUrl()">Save</button>
           </div>
@@ -177,6 +181,30 @@
       </div>
     </div>
 
+    <div id="onOffTimerModal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-backdrop" data-close-on-off-timer-modal="1"></div>
+      <div class="modal-card">
+        <h2>On / off timer</h2>
+        <p class="hint" id="onOffTimerModalHint">
+          Daily on/off times follow the device clock. Off blacks the screen; the player stays powered and connected to the CMS.
+        </p>
+        <div class="on-off-timer-grid">
+          <label class="field-label">
+            Turn on (unmute)
+            <input type="time" id="onOffTimerTurnOnAt" value="06:00" />
+          </label>
+          <label class="field-label">
+            Turn off (mute)
+            <input type="time" id="onOffTimerTurnOffAt" value="18:00" />
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="onOffTimerSaveBtn" class="primary">Save</button>
+          <button type="button" data-close-on-off-timer-modal="1">Cancel</button>
+        </div>
+      </div>
+    </div>
+
     <div id="downloadFailedModal" class="modal hidden" role="dialog" aria-modal="true">
       <div class="modal-backdrop" data-close-download-failed-modal="1"></div>
       <div class="modal-card">
@@ -190,6 +218,23 @@
         </p>
         <div class="modal-actions">
           <button type="button" data-close-download-failed-modal="1">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="updateSdkModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="updateSdkModalTitle">
+      <div class="modal-backdrop" data-close-update-sdk-modal="1"></div>
+      <div class="modal-card update-sdk-modal-card">
+        <h2 id="updateSdkModalTitle">Update SDK</h2>
+        <p class="hint">Current installed SDK version:</p>
+        <p class="update-sdk-version" id="updateSdkVersionLabel">Loading…</p>
+        <p class="hint">
+          To upgrade on AI agent platforms (Replit, Vercel, etc.), paste this prompt into the Agent chat:
+        </p>
+        <pre class="update-sdk-prompt" id="updateSdkPromptText">Follow @tomorrowos/sdk REPLIT_UPGRADE.md to upgrade my CMS with the latest SDK.</pre>
+        <div class="modal-actions update-sdk-modal-actions">
+          <button type="button" id="copyUpdateSdkPromptBtn" class="primary">Copy prompt</button>
+          <button type="button" data-close-update-sdk-modal="1">Close</button>
         </div>
       </div>
     </div>

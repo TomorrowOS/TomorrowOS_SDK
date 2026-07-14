@@ -13,8 +13,10 @@ export type {
   StatusBlocker
 } from "./server-status.js";
 export { buildServerStatus } from "./server-status.js";
+export { getSdkPackageVersion } from "./sdk-version.js";
 
 export type {
+  DeviceOnOffTimer,
   DevicePlaylistAssignment,
   DeviceRegistryRecord,
   PairedDeviceRecord,

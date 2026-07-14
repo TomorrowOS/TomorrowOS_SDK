@@ -1,6 +1,7 @@
 import { Pool, type PoolConfig } from "pg";
 
 import type {
+  DeviceOnOffTimer,
   DevicePlaylistAssignment,
   DeviceRegistryEntry,
   DeviceRegistryRecord,
@@ -46,6 +47,7 @@ interface PairedDeviceRow {
   last_policy_push_at: string | null;
   last_screenshot_asset_id: string | null;
   last_screenshot_captured_at: string | null;
+  on_off_timer_json: string | null;
 }
 
 interface PlaylistRow {
@@ -207,6 +209,9 @@ export class PostgresStore implements TomorrowOSMigratableStore {
 
       ALTER TABLE paired_devices
         ADD COLUMN IF NOT EXISTS last_screenshot_captured_at TEXT;
+
+      ALTER TABLE paired_devices
+        ADD COLUMN IF NOT EXISTS on_off_timer_json TEXT;
 
       ALTER TABLE device_registry
         ADD COLUMN IF NOT EXISTS display_name TEXT;
@@ -489,9 +494,10 @@ export class PostgresStore implements TomorrowOSMigratableStore {
         last_offline_at,
         last_policy_push_at,
         last_screenshot_asset_id,
-        last_screenshot_captured_at
+        last_screenshot_captured_at,
+        on_off_timer_json
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       ON CONFLICT (device_id) DO UPDATE SET
         pairing_token = EXCLUDED.pairing_token,
         paired_at = EXCLUDED.paired_at,
@@ -505,7 +511,8 @@ export class PostgresStore implements TomorrowOSMigratableStore {
         last_offline_at = EXCLUDED.last_offline_at,
         last_policy_push_at = EXCLUDED.last_policy_push_at,
         last_screenshot_asset_id = EXCLUDED.last_screenshot_asset_id,
-        last_screenshot_captured_at = EXCLUDED.last_screenshot_captured_at
+        last_screenshot_captured_at = EXCLUDED.last_screenshot_captured_at,
+        on_off_timer_json = EXCLUDED.on_off_timer_json
     `, [
       deviceId,
       record.pairingToken,
@@ -520,7 +527,8 @@ export class PostgresStore implements TomorrowOSMigratableStore {
       record.lastOfflineAt ?? null,
       record.lastPolicyPushAt ?? null,
       record.lastScreenshotAssetId ?? null,
-      record.lastScreenshotCapturedAt ?? null
+      record.lastScreenshotCapturedAt ?? null,
+      record.onOffTimer ? JSON.stringify(record.onOffTimer) : null
     ]);
   }
 
@@ -781,6 +789,10 @@ export class PostgresStore implements TomorrowOSMigratableStore {
   }
 
   private mapPairedDeviceRow(row: PairedDeviceRow): PairedDeviceRecord {
+    const onOffTimer = parseJson<DeviceOnOffTimer | null>(
+      row.on_off_timer_json,
+      null
+    );
     return {
       pairingToken: row.pairing_token,
       pairedAt: row.paired_at,
@@ -794,7 +806,8 @@ export class PostgresStore implements TomorrowOSMigratableStore {
       lastOfflineAt: optionalString(row.last_offline_at),
       lastPolicyPushAt: optionalString(row.last_policy_push_at),
       lastScreenshotAssetId: optionalString(row.last_screenshot_asset_id),
-      lastScreenshotCapturedAt: optionalString(row.last_screenshot_captured_at)
+      lastScreenshotCapturedAt: optionalString(row.last_screenshot_captured_at),
+      ...(onOffTimer ? { onOffTimer } : {})
     };
   }
 

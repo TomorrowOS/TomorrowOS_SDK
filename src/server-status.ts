@@ -5,6 +5,7 @@ import {
   pingCloudinary,
   resolveCloudinaryConfig
 } from "./cloudinary-storage.js";
+import { getSdkPackageVersion } from "./sdk-version.js";
 import type { TomorrowOSStore } from "./store/types.js";
 
 export type ConnectorState = "ok" | "warn" | "error" | "missing";
@@ -28,6 +29,8 @@ export interface ServerStatusReport {
   status: "success";
   overall: "ok" | "degraded" | "blocked";
   checkedAt: string;
+  /** Installed `@tomorrowos/sdk` version. */
+  sdkVersion: string;
   connectors: ConnectorStatus[];
   blockers: StatusBlocker[];
 }
@@ -84,14 +87,14 @@ function resolveDatabaseProvider(env: NodeJS.ProcessEnv): {
     };
   }
   if (driver === "memory") {
-    return { provider: "memory", label: "Memory Store", configured: true };
+    return { provider: "memory", label: "Database", configured: true };
   }
   if (driver === "sqlite" || !driver) {
-    return { provider: "sqlite", label: "SQLite", configured: true };
+    return { provider: "sqlite", label: "Database", configured: true };
   }
   return {
     provider: driver || "unknown",
-    label: driver ? `Store (${driver})` : "Database",
+    label: "Database",
     configured: hasUrl || driver === "sqlite" || driver === "memory"
   };
 }
@@ -356,6 +359,7 @@ export async function buildServerStatus(
     status: "success",
     overall,
     checkedAt: new Date().toISOString(),
+    sdkVersion: getSdkPackageVersion(),
     connectors,
     blockers
   };

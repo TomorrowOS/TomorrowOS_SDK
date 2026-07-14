@@ -19,6 +19,18 @@ export interface DeviceRegistryRecord {
   displayName?: string;
 }
 
+/**
+ * Device-local daily screen on/off window (HH:mm, device clock).
+ * Off = display mute / power-save (Tizen panel mute or BrightSign HDMI power-save);
+ * device stays CMS-connected.
+ */
+export interface DeviceOnOffTimer {
+  /** HH:mm — unmute / screen on */
+  turnOnAt: string;
+  /** HH:mm — screen off (device stays CMS-connected) */
+  turnOffAt: string;
+}
+
 export interface PairedDeviceRecord {
   pairingToken: string;
   pairedAt: string;
@@ -34,6 +46,8 @@ export interface PairedDeviceRecord {
   /** Latest device screenshot stored via uploaded_assets (local or Cloudinary). */
   lastScreenshotAssetId?: string;
   lastScreenshotCapturedAt?: string;
+  /** Screen mute schedule (not device power off). */
+  onOffTimer?: DeviceOnOffTimer;
 }
 
 export interface PairedDeviceEntry {

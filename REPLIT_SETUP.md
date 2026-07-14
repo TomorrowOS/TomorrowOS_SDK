@@ -230,7 +230,7 @@ Allowed extras (optional): `"build-player": "tomorrowos build --platform tizen"`
     "node": ">=20"
   },
   "dependencies": {
-    "@tomorrowos/sdk": "^0.9.10",
+    "@tomorrowos/sdk": "^0.9.12",
     "dotenv": "^17.2.3",
     "tsx": "^4.19.0"
   },

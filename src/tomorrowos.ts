@@ -15,6 +15,7 @@ import {
 } from "./pairing-code.js";
 import { PlaylistCatalog, type BuiltDevicePolicy } from "./playlist-catalog.js";
 import type {
+  DeviceOnOffTimer,
   DeviceRegistryRecord,
   PairedDeviceRecord,
   PlaylistItemRecord,
@@ -34,6 +35,7 @@ import {
 } from "./cloudinary-storage.js";
 import { probeVideoDurationMs } from "./media-probe.js";
 import { contentHashHex, storeUploadIfNeeded } from "./upload-storage.js";
+import { detectPrimaryLanIpv4 } from "./lan-address.js";
 import { buildServerStatus } from "./server-status.js";
 export type {
   ConnectorState,
@@ -174,6 +176,26 @@ export interface DeviceListItem {
     url: string;
     capturedAt: string;
   } | null;
+  /** Daily screen mute schedule (device stays connected). */
+  onOffTimer: DeviceOnOffTimer | null;
+}
+
+const ON_OFF_TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+function normalizeOnOffTimer(input: unknown): DeviceOnOffTimer {
+  if (!input || typeof input !== "object") {
+    throw new Error("onOffTimer object is required");
+  }
+  const body = input as Record<string, unknown>;
+  const turnOnAt = String(body.turnOnAt ?? "").trim();
+  const turnOffAt = String(body.turnOffAt ?? "").trim();
+  if (!ON_OFF_TIME_RE.test(turnOnAt) || !ON_OFF_TIME_RE.test(turnOffAt)) {
+    throw new Error("turnOnAt and turnOffAt must be HH:mm (24h)");
+  }
+  if (turnOnAt === turnOffAt) {
+    throw new Error("turnOnAt and turnOffAt must be different");
+  }
+  return { turnOnAt, turnOffAt };
 }
 
 export interface DeviceLogEntry {
@@ -373,6 +395,8 @@ export class TomorrowOS extends EventEmitter {
   private staticIndexFile = "index.html";
   /** Set when listen() starts — exposed to CMS panel for post-restart reconnect grace. */
   private serverStartedAt: string | null = null;
+  /** Port passed to listen(); used for suggested LAN CMS URL. */
+  private listenPort: number | null = null;
 
   constructor(options: TomorrowOSOptions) {
     super();
@@ -482,6 +506,9 @@ export class TomorrowOS extends EventEmitter {
       void this.refreshPairedDeviceInfo(deviceId);
       void this.pushLatestPolicyToDevice(deviceId).catch((err) => {
         console.error("[TomorrowOS] pushLatestPolicy on paired failed:", err);
+      });
+      void this.pushOnOffTimerToDevice(deviceId).catch((err) => {
+        console.error("[TomorrowOS] pushOnOffTimer on paired failed:", err);
       });
     }
 
@@ -600,10 +627,73 @@ export class TomorrowOS extends EventEmitter {
         screenOnlineSince,
         latestErrorAt: latestError?.timestamp ?? null,
         latestErrorMessage: latestError?.message ?? null,
-        latestScreenshot
+        latestScreenshot,
+        onOffTimer: (() => {
+          try {
+            return record.onOffTimer
+              ? normalizeOnOffTimer(record.onOffTimer)
+              : null;
+          } catch {
+            return null;
+          }
+        })()
       };
     })
     );
+  }
+
+  /**
+   * Persist a daily on/off timer (screen mute / HDMI power-save). Saved even if
+   * offline; pushed to the player when connected.
+   */
+  async setDeviceOnOffTimer(
+    deviceId: string,
+    timerInput: unknown
+  ): Promise<{
+    deviceId: string;
+    onOffTimer: DeviceOnOffTimer;
+    pushed: boolean;
+  }> {
+    const id = String(deviceId || "").trim();
+    if (!id) {
+      throw new Error("deviceId is required");
+    }
+
+    const existing = await this.store.getPairedDevice(id);
+    if (!existing) {
+      throw new Error("Device is not paired");
+    }
+
+    const onOffTimer = normalizeOnOffTimer(timerInput);
+    await this.store.setPairedDevice(id, {
+      ...existing,
+      onOffTimer
+    });
+
+    const pushed = await this.pushOnOffTimerToDevice(id);
+    return { deviceId: id, onOffTimer, pushed };
+  }
+
+  private async pushOnOffTimerToDevice(deviceId: string): Promise<boolean> {
+    const existing = await this.store.getPairedDevice(deviceId);
+    if (!existing?.onOffTimer) return false;
+
+    const ws = this.devices.get(deviceId);
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+
+    try {
+      const result = await this.sendCommandToSocket(
+        ws,
+        deviceId,
+        "device.display.setOnOffTimer",
+        { onOffTimer: existing.onOffTimer },
+        15_000
+      );
+      return result.status === "success" || result.status === "accepted";
+    } catch (err) {
+      console.error("[TomorrowOS] pushOnOffTimer failed:", err);
+      return false;
+    }
   }
 
   async setDeviceName(deviceId: string, deviceName: string): Promise<{
@@ -950,8 +1040,17 @@ export class TomorrowOS extends EventEmitter {
     });
   }
 
+  /** Best-effort LAN URL for local screens (e.g. http://192.168.1.10:3000). */
+  private getSuggestedCmsUrl(): string | null {
+    const ip = detectPrimaryLanIpv4();
+    const port = this.listenPort;
+    if (!ip || port == null || !Number.isFinite(port)) return null;
+    return `http://${ip}:${port}`;
+  }
+
   listen(options: ListenOptions): http.Server {
     const { port, host = "0.0.0.0", staticRoot, staticIndex } = options;
+    this.listenPort = port;
     this.staticRoot = staticRoot ?? null;
     if (this.staticRoot) {
       const idx = (staticIndex ?? "index.html").trim().replace(/^[\\/]+/, "") || "index.html";
@@ -1404,7 +1503,11 @@ export class TomorrowOS extends EventEmitter {
           store: this.store,
           staticRoot: this.staticRoot
         });
-        sendJson(res, 200, report as unknown as Record<string, unknown>);
+        const suggestedCmsUrl = this.getSuggestedCmsUrl();
+        sendJson(res, 200, {
+          ...(report as unknown as Record<string, unknown>),
+          ...(suggestedCmsUrl ? { suggestedCmsUrl } : {})
+        });
         return;
       }
 
@@ -1466,6 +1569,23 @@ export class TomorrowOS extends EventEmitter {
           sendJson(res, 200, { status: "success", ...result });
         } catch (e) {
           const msg = e instanceof Error ? e.message : "Rename failed";
+          sendJson(res, 400, { status: "failed", error: msg });
+        }
+        return;
+      }
+
+      const deviceOnOffTimer = /^\/device\/([^/]+)\/on-off-timer$/.exec(pathname);
+      if (req.method === "POST" && deviceOnOffTimer) {
+        const deviceId = decodeURIComponent(deviceOnOffTimer[1]);
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        try {
+          const result = await this.setDeviceOnOffTimer(
+            deviceId,
+            body.onOffTimer ?? body
+          );
+          sendJson(res, 200, { status: "success", ...result });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "On/off timer failed";
           sendJson(res, 400, { status: "failed", error: msg });
         }
         return;
@@ -1922,6 +2042,9 @@ export class TomorrowOS extends EventEmitter {
           this.emit("device.online", { deviceId });
           void this.pushLatestPolicyToDevice(deviceId).catch((err) => {
             console.error("[TomorrowOS] pushLatestPolicy on resume failed:", err);
+          });
+          void this.pushOnOffTimerToDevice(deviceId).catch((err) => {
+            console.error("[TomorrowOS] pushOnOffTimer on resume failed:", err);
           });
         })();
         return;

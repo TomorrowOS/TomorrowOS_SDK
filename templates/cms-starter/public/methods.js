@@ -28,8 +28,13 @@ let editingDeviceNameValue = "";
 
 let devicePollTimer = null;
 let serverStatusTimer = null;
+/** @type {string} Latest known `@tomorrowos/sdk` version from GET /status. */
+let cachedSdkVersion = "";
 /** @type {number|null} CMS server boot time (ms) from GET /devices. */
 let serverStartedAtMs = null;
+
+const UPDATE_SDK_PROMPT =
+  "Follow @tomorrowos/sdk REPLIT_UPGRADE.md to upgrade my CMS with the latest SDK.";
 /** @type {ReturnType<typeof setTimeout>|null} */
 let reconnectGraceTimer = null;
 let uploadQueue = [];
@@ -183,6 +188,28 @@ function normalizeMediaBaseUrl(raw) {
 /** User-saved LAN override (local dev only). Not used on hosted CMS unless explicitly set. */
 function getExplicitLanMediaBase() {
   return normalizeMediaBaseUrl(localStorage.getItem(PANEL_MEDIA_BASE_KEY) || "");
+}
+
+/**
+ * Prefill CMS URL for screens from server-detected LAN IP:port when running on localhost
+ * and the operator has not saved a value yet. Auto-persists so thumbs/publish work without Save.
+ */
+function applyDefaultCmsUrlForScreens(suggested) {
+  if (!isLocalPanelHost(window.location.hostname)) return;
+  const normalized = normalizeMediaBaseUrl(suggested);
+  if (!normalized) return;
+
+  const cmsBaseInput = document.getElementById("cmsDeviceBaseUrl");
+  const saved = getExplicitLanMediaBase();
+  if (saved) {
+    if (cmsBaseInput && !String(cmsBaseInput.value || "").trim()) {
+      cmsBaseInput.value = saved;
+    }
+    return;
+  }
+
+  if (cmsBaseInput) cmsBaseInput.value = normalized;
+  localStorage.setItem(PANEL_MEDIA_BASE_KEY, normalized);
 }
 
 function playlistHasRelativeMediaUrls(playlist) {
@@ -1202,7 +1229,6 @@ function renderDeviceCards() {
     const primaryRows = [
       ["Device ID", device.deviceId],
       ["System", device.system || device.platform || "—"],
-      ["System version", device.systemVersion || "—"],
       ["Player version", device.playerVersion || "—"]
     ];
     for (const [label, value] of primaryRows) {
@@ -1274,6 +1300,12 @@ function renderDeviceCards() {
     latestScreenshotBtn.textContent = "Last screen";
     latestScreenshotBtn.addEventListener("click", () => viewLatestScreenshot(device.deviceId));
 
+    const timerBtn = document.createElement("button");
+    timerBtn.type = "button";
+    timerBtn.textContent = "Timer";
+    timerBtn.title = "Daily screen on/off timer";
+    timerBtn.addEventListener("click", () => openOnOffTimerModal(device.deviceId));
+
     const unpairBtn = document.createElement("button");
     unpairBtn.type = "button";
     unpairBtn.className = "danger";
@@ -1288,6 +1320,7 @@ function renderDeviceCards() {
     actions.appendChild(logsBtn);
     actions.appendChild(screenshotBtn);
     actions.appendChild(latestScreenshotBtn);
+    actions.appendChild(timerBtn);
     actions.appendChild(unpairBtn);
 
     card.appendChild(header);
@@ -1780,6 +1813,81 @@ function closeScreenshotModal() {
   modal?.classList.add("hidden");
 }
 
+function normalizeTimeInputValue(value, fallback) {
+  const raw = String(value || "").trim();
+  const match = /^(\d{1,2}):(\d{2})/.exec(raw);
+  if (!match) return fallback;
+  const hh = Math.min(23, Math.max(0, Number(match[1])));
+  const mm = Math.min(59, Math.max(0, Number(match[2])));
+  if (Number.isNaN(hh) || Number.isNaN(mm)) return fallback;
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+let onOffTimerModalDeviceId = null;
+
+function openOnOffTimerModal(deviceId) {
+  const device = devicesCache.find((d) => d.deviceId === deviceId);
+  if (!device) return;
+
+  onOffTimerModalDeviceId = deviceId;
+  const modal = document.getElementById("onOffTimerModal");
+  const onEl = document.getElementById("onOffTimerTurnOnAt");
+  const offEl = document.getElementById("onOffTimerTurnOffAt");
+  if (!modal || !onEl || !offEl) return;
+
+  const timer = device.onOffTimer || {};
+  onEl.value = normalizeTimeInputValue(timer.turnOnAt, "06:00");
+  offEl.value = normalizeTimeInputValue(timer.turnOffAt, "18:00");
+  modal.classList.remove("hidden");
+}
+
+function closeOnOffTimerModal() {
+  const modal = document.getElementById("onOffTimerModal");
+  if (modal) modal.classList.add("hidden");
+  onOffTimerModalDeviceId = null;
+}
+
+async function saveOnOffTimerModal() {
+  const deviceId = onOffTimerModalDeviceId;
+  if (!deviceId) return;
+
+  const onEl = document.getElementById("onOffTimerTurnOnAt");
+  const offEl = document.getElementById("onOffTimerTurnOffAt");
+  const saveBtn = document.getElementById("onOffTimerSaveBtn");
+  if (!onEl || !offEl) return;
+
+  const onOffTimer = {
+    turnOnAt: normalizeTimeInputValue(onEl.value, "06:00"),
+    turnOffAt: normalizeTimeInputValue(offEl.value, "18:00")
+  };
+
+  if (onOffTimer.turnOnAt === onOffTimer.turnOffAt) {
+    alert("Turn on and turn off times must be different.");
+    return;
+  }
+
+  if (saveBtn) saveBtn.disabled = true;
+  try {
+    const res = await fetch(`/device/${encodeURIComponent(deviceId)}/on-off-timer`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ onOffTimer })
+    });
+    const data = await res.json();
+    if (!res.ok || data.status === "failed") {
+      alert(data.error || "Could not save on/off timer");
+      return;
+    }
+    showResult({ deviceId, onOffTimer: data.onOffTimer, pushed: data.pushed });
+    closeOnOffTimerModal();
+    await fetchDevices();
+  } catch (err) {
+    alert(err?.message || "Could not save on/off timer");
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
+
 function openDownloadFailedModal(detail) {
   const modal = document.getElementById("downloadFailedModal");
   const message = document.getElementById("downloadFailedModalMessage");
@@ -1802,6 +1910,48 @@ function openDownloadPlayersModal() {
 
 function closeDownloadPlayersModal() {
   document.getElementById("downloadPlayersModal")?.classList.add("hidden");
+}
+
+function setUpdateSdkVersionLabel(version) {
+  const label = document.getElementById("updateSdkVersionLabel");
+  if (!label) return;
+  label.textContent = version || "unknown";
+}
+
+async function openUpdateSdkModal() {
+  const modal = document.getElementById("updateSdkModal");
+  const promptEl = document.getElementById("updateSdkPromptText");
+  if (promptEl) promptEl.textContent = UPDATE_SDK_PROMPT;
+  setUpdateSdkVersionLabel(cachedSdkVersion || "Loading…");
+  modal?.classList.remove("hidden");
+
+  if (!cachedSdkVersion) {
+    await fetchServerStatus();
+    setUpdateSdkVersionLabel(cachedSdkVersion || "unknown");
+  }
+}
+
+function closeUpdateSdkModal() {
+  document.getElementById("updateSdkModal")?.classList.add("hidden");
+}
+
+async function copyUpdateSdkPrompt() {
+  const text =
+    document.getElementById("updateSdkPromptText")?.textContent?.trim() ||
+    UPDATE_SDK_PROMPT;
+  try {
+    await navigator.clipboard.writeText(text);
+    const btn = document.getElementById("copyUpdateSdkPromptBtn");
+    if (btn) {
+      const prev = btn.textContent;
+      btn.textContent = "Copied";
+      setTimeout(() => {
+        btn.textContent = prev || "Copy prompt";
+      }, 1200);
+    }
+  } catch {
+    alert("Could not copy automatically. Select the prompt text and copy it manually.");
+  }
 }
 
 function handlePlayerDownloadLinkClick(ev) {
@@ -1985,6 +2135,12 @@ async function fetchServerStatus() {
       });
       return;
     }
+    if (typeof data.sdkVersion === "string" && data.sdkVersion.trim()) {
+      cachedSdkVersion = data.sdkVersion.trim();
+    }
+    if (typeof data.suggestedCmsUrl === "string") {
+      applyDefaultCmsUrlForScreens(data.suggestedCmsUrl);
+    }
     renderServerStatus(data);
   } catch (err) {
     renderServerStatus({
@@ -2051,6 +2207,12 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll("[data-close-screenshot-modal]").forEach((el) => {
     el.addEventListener("click", closeScreenshotModal);
   });
+  document.querySelectorAll("[data-close-on-off-timer-modal]").forEach((el) => {
+    el.addEventListener("click", closeOnOffTimerModal);
+  });
+  document
+    .getElementById("onOffTimerSaveBtn")
+    ?.addEventListener("click", () => void saveOnOffTimerModal());
   document.querySelectorAll("[data-close-download-failed-modal]").forEach((el) => {
     el.addEventListener("click", closeDownloadFailedModal);
   });
@@ -2062,6 +2224,14 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll("[data-player-download]").forEach((el) => {
     el.addEventListener("click", handlePlayerDownloadLinkClick);
   });
+
+  document.getElementById("updateSdkBtn")?.addEventListener("click", () => void openUpdateSdkModal());
+  document.querySelectorAll("[data-close-update-sdk-modal]").forEach((el) => {
+    el.addEventListener("click", closeUpdateSdkModal);
+  });
+  document
+    .getElementById("copyUpdateSdkPromptBtn")
+    ?.addEventListener("click", () => void copyUpdateSdkPrompt());
 
   document.getElementById("addAssetBtn")?.addEventListener("click", () => {
     if (uploadInProgress) return;

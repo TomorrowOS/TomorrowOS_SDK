@@ -3,6 +3,7 @@ import path from "path";
 import Database from "better-sqlite3";
 
 import type {
+  DeviceOnOffTimer,
   DevicePlaylistAssignment,
   DeviceRegistryEntry,
   DeviceRegistryRecord,
@@ -53,6 +54,7 @@ interface PairedDeviceRow {
   last_policy_push_at: string | null;
   last_screenshot_asset_id: string | null;
   last_screenshot_captured_at: string | null;
+  on_off_timer_json: string | null;
 }
 
 interface PlaylistRow {
@@ -212,6 +214,7 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
     this.addColumnIfMissing("paired_devices", "system_version TEXT");
     this.addColumnIfMissing("paired_devices", "last_screenshot_asset_id TEXT");
     this.addColumnIfMissing("paired_devices", "last_screenshot_captured_at TEXT");
+    this.addColumnIfMissing("paired_devices", "on_off_timer_json TEXT");
     this.addColumnIfMissing("device_registry", "display_name TEXT");
     this.migrateDropPlaylistVersionColumns();
     this.migrateDropUploadedAssetStorageProvider();
@@ -556,9 +559,10 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
         last_offline_at,
         last_policy_push_at,
         last_screenshot_asset_id,
-        last_screenshot_captured_at
+        last_screenshot_captured_at,
+        on_off_timer_json
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(device_id) DO UPDATE SET
         pairing_token = excluded.pairing_token,
         paired_at = excluded.paired_at,
@@ -572,7 +576,8 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
         last_offline_at = excluded.last_offline_at,
         last_policy_push_at = excluded.last_policy_push_at,
         last_screenshot_asset_id = excluded.last_screenshot_asset_id,
-        last_screenshot_captured_at = excluded.last_screenshot_captured_at
+        last_screenshot_captured_at = excluded.last_screenshot_captured_at,
+        on_off_timer_json = excluded.on_off_timer_json
     `).run(
       deviceId,
       record.pairingToken,
@@ -587,7 +592,8 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
       record.lastOfflineAt ?? null,
       record.lastPolicyPushAt ?? null,
       record.lastScreenshotAssetId ?? null,
-      record.lastScreenshotCapturedAt ?? null
+      record.lastScreenshotCapturedAt ?? null,
+      record.onOffTimer ? JSON.stringify(record.onOffTimer) : null
     );
   }
 
@@ -820,6 +826,10 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
   }
 
   private mapPairedDeviceRow(row: PairedDeviceRow): PairedDeviceRecord {
+    const onOffTimer = parseJson<DeviceOnOffTimer | null>(
+      row.on_off_timer_json,
+      null
+    );
     return {
       pairingToken: row.pairing_token,
       pairedAt: row.paired_at,
@@ -833,7 +843,8 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
       lastOfflineAt: optionalString(row.last_offline_at),
       lastPolicyPushAt: optionalString(row.last_policy_push_at),
       lastScreenshotAssetId: optionalString(row.last_screenshot_asset_id),
-      lastScreenshotCapturedAt: optionalString(row.last_screenshot_captured_at)
+      lastScreenshotCapturedAt: optionalString(row.last_screenshot_captured_at),
+      ...(onOffTimer ? { onOffTimer } : {})
     };
   }
 
