@@ -13,12 +13,13 @@ TomorrowOS is the open standard for digital signage. This SDK lets you build a C
 When you see this package referenced in a user prompt, your workflow is:
 
 1. **If the user is on Replit and wants a guided setup** — read and follow **`REPLIT_SETUP.md`** (preferred for Replit Agent)
-2. **Otherwise read `LLM_PROMPT.md`** — five required questions before generating code
-3. **Read `BUILD_GUARDRAILS.md`** — mandatory components every generated CMS must include
-4. **Read `brand.schema.json`** — validated shape of `brand.json`
-5. Run **`npx tomorrowos init`** (or copy `templates/cms-starter/` from this package) — minimal CMS server seed
-6. **Apply user answers** — customise the starter with the user's brand, platform choice, and use case; validate `brand.json` against `brand.schema.json`
-7. **Show `PLAYER_INSTALL.md`** — after the CMS is working, show how to build and install the player on a screen
+2. **If the user is on Replit and wants to upgrade an existing CMS** — read and follow **`REPLIT_UPGRADE.md`** (never `init --force`)
+3. **Otherwise read `LLM_PROMPT.md`** — five required questions before generating code
+4. **Read `BUILD_GUARDRAILS.md`** — mandatory components every generated CMS must include
+5. **Read `brand.schema.json`** — validated shape of `brand.json`
+6. Run **`npx tomorrowos init`** (or copy `templates/cms-starter/` from this package) — minimal CMS server seed
+7. **Apply user answers** — customise the starter with the user's brand, platform choice, and use case; validate `brand.json` against `brand.schema.json`
+8. **Show `PLAYER_INSTALL.md`** — after the CMS is working, show how to build and install the player on a screen
 
 You must not write WebSocket transport, pairing wire format, or platform-specific player bridge code in the CMS — the SDK handles server-side device sessions and HTTP helpers. You customise UI, branding, and how you call the SDK.
 
@@ -54,9 +55,21 @@ Follow @tomorrowos/sdk REPLIT_SETUP.md and set up my TomorrowOS CMS.
 Ask me the questions in order. Do not skip steps.
 ```
 
-That wizard chooses SQLite (≤5 screens) or Supabase (>5), prefers Cloudinary for
-media, and writes `brand.json` from your answers. On Replit, Supabase must use
-Secret **`SUPABASE_URL`** (not the reserved `DATABASE_URL`).
+That wizard configures Supabase, prefers Cloudinary for media, and writes
+`brand.json` from your answers. On Replit, Supabase must use Secret
+**`SUPABASE_URL`** (not the reserved `DATABASE_URL`).
+
+### Replit upgrade (existing CMS)
+
+In Replit Agent, paste:
+
+```text
+Follow @tomorrowos/sdk REPLIT_UPGRADE.md to upgrade my CMS with the latest SDK.
+```
+
+That protocol installs `@tomorrowos/sdk@latest`, backs up panel/server files,
+diffs `cms-starter` templates (merge — never blind overwrite), and must **not**
+run `init` / delete `data/` or `public/uploads/`.
 
 To switch to Supabase/Postgres manually, edit `.env` / Secrets:
 
@@ -139,6 +152,8 @@ See `PLAYER_INSTALL.md` for installation notes.
 | File | Purpose |
 |------|---------|
 | `LLM_PROMPT.md` | Five-question elicitation for LLMs |
+| `REPLIT_SETUP.md` | Replit Agent guided CMS setup |
+| `REPLIT_UPGRADE.md` | Replit Agent upgrade to latest SDK (no init) |
 | `BUILD_GUARDRAILS.md` | Mandatory CMS components |
 | `PLAYER_INSTALL.md` | Player build / install / pairing |
 | `brand.schema.json` | JSON Schema for `brand.json` |

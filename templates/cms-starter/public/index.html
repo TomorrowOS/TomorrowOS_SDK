@@ -40,9 +40,16 @@
         <section class="card">
           <h2>Pair device</h2>
           <p class="hint">Enter the 6-character code on the screen (A–Z or 0–9).</p>
-          <div class="row">
-            <input id="code" maxlength="6" placeholder="e.g. A3K9Z1" autocapitalize="characters" />
-            <button type="button" onclick="verify()">Verify</button>
+          <div class="row pair-code-row">
+            <input
+              id="code"
+              class="pair-code-input"
+              type="text"
+              maxlength="6"
+              placeholder="e.g. A3K9Z1"
+              autocapitalize="characters"
+            />
+            <button type="button" class="pair-verify-btn" onclick="verify()">Verify</button>
           </div>
         </section>
 

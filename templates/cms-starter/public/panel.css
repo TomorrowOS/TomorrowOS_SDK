@@ -457,6 +457,35 @@ body {
   align-items: center;
 }
 
+/* Match Pair Verify + code input height to device playlist Remove buttons */
+.pair-code-row {
+  align-items: stretch;
+}
+
+.pair-code-row .pair-code-input,
+.pair-code-row .pair-verify-btn {
+  box-sizing: border-box;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  padding: 0.45rem 0.85rem;
+  min-height: 2.05rem;
+  height: 2.05rem;
+  border-radius: 6px;
+}
+
+.pair-code-row .pair-code-input {
+  width: 9.5rem;
+}
+
+.device-published-list button {
+  font-size: 0.78rem;
+  line-height: 1.2;
+  padding: 0.45rem 0.85rem;
+  min-height: 2.05rem;
+  height: 2.05rem;
+  box-sizing: border-box;
+}
+
 input[type="text"],
 input[type="date"],
 input[type="time"],
