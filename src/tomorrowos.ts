@@ -674,9 +674,35 @@ export class TomorrowOS extends EventEmitter {
     return { deviceId: id, onOffTimer, pushed };
   }
 
+  /**
+   * Clear the daily on/off timer. The player keeps its current mute / power-save
+   * state until a new timer is set.
+   */
+  async clearDeviceOnOffTimer(deviceId: string): Promise<{
+    deviceId: string;
+    onOffTimer: null;
+    pushed: boolean;
+  }> {
+    const id = String(deviceId || "").trim();
+    if (!id) {
+      throw new Error("deviceId is required");
+    }
+
+    const existing = await this.store.getPairedDevice(id);
+    if (!existing) {
+      throw new Error("Device is not paired");
+    }
+
+    const { onOffTimer: _removed, ...rest } = existing;
+    await this.store.setPairedDevice(id, rest);
+
+    const pushed = await this.pushOnOffTimerToDevice(id);
+    return { deviceId: id, onOffTimer: null, pushed };
+  }
+
   private async pushOnOffTimerToDevice(deviceId: string): Promise<boolean> {
     const existing = await this.store.getPairedDevice(deviceId);
-    if (!existing?.onOffTimer) return false;
+    if (!existing) return false;
 
     const ws = this.devices.get(deviceId);
     if (!ws || ws.readyState !== WebSocket.OPEN) return false;
@@ -686,7 +712,7 @@ export class TomorrowOS extends EventEmitter {
         ws,
         deviceId,
         "device.display.setOnOffTimer",
-        { onOffTimer: existing.onOffTimer },
+        { onOffTimer: existing.onOffTimer ?? null },
         15_000
       );
       return result.status === "success" || result.status === "accepted";
@@ -1579,13 +1605,30 @@ export class TomorrowOS extends EventEmitter {
         const deviceId = decodeURIComponent(deviceOnOffTimer[1]);
         const body = (await readJsonBody(req)) as Record<string, unknown>;
         try {
-          const result = await this.setDeviceOnOffTimer(
-            deviceId,
-            body.onOffTimer ?? body
-          );
-          sendJson(res, 200, { status: "success", ...result });
+          if (body.clear === true || body.onOffTimer === null) {
+            const result = await this.clearDeviceOnOffTimer(deviceId);
+            sendJson(res, 200, { status: "success", ...result });
+          } else {
+            const result = await this.setDeviceOnOffTimer(
+              deviceId,
+              body.onOffTimer ?? body
+            );
+            sendJson(res, 200, { status: "success", ...result });
+          }
         } catch (e) {
           const msg = e instanceof Error ? e.message : "On/off timer failed";
+          sendJson(res, 400, { status: "failed", error: msg });
+        }
+        return;
+      }
+
+      if (req.method === "DELETE" && deviceOnOffTimer) {
+        const deviceId = decodeURIComponent(deviceOnOffTimer[1]);
+        try {
+          const result = await this.clearDeviceOnOffTimer(deviceId);
+          sendJson(res, 200, { status: "success", ...result });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "On/off timer clear failed";
           sendJson(res, 400, { status: "failed", error: msg });
         }
         return;

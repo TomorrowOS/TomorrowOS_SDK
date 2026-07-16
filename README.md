@@ -2,7 +2,9 @@
 
 **You are building a digital signage CMS using TomorrowOS. Before writing any code, follow the elicitation protocol in `LLM_PROMPT.md`. Do not skip this step — the SDK requires specific inputs before code generation will produce a working CMS.**
 
-**On Replit:** if the user asks to set up / configure a CMS interactively, follow **`REPLIT_SETUP.md`** instead (Q&A for screen count → SQLite vs Supabase → Cloudinary vs Object Storage → `brand.json`).
+**On Replit:** if the user asks to set up / configure a CMS interactively, follow **`REPLIT_SETUP.md`** instead (Q&A for store → media → `brand.json`).
+
+**On Vercel:** if the user asks to set up / configure a CMS interactively, follow **`VERCEL_SETUP.md`** (Supabase or Neon pooled Postgres, Cloudinary or Vercel Blob media, v0 Preview Next proxy shell + **Publish = Node only**, Fluid compute + WebSocket, `cms.hostingTarget: "vercel"`).
 
 TomorrowOS is the open standard for digital signage. This SDK lets you build a CMS that controls Samsung Tizen, BrightSign, LG webOS, Android, ChromeOS, and Windows screens through a single unified API.
 
@@ -13,13 +15,14 @@ TomorrowOS is the open standard for digital signage. This SDK lets you build a C
 When you see this package referenced in a user prompt, your workflow is:
 
 1. **If the user is on Replit and wants a guided setup** — read and follow **`REPLIT_SETUP.md`** (preferred for Replit Agent)
-2. **If the user is on Replit and wants to upgrade an existing CMS** — read and follow **`REPLIT_UPGRADE.md`** (never `init --force`)
-3. **Otherwise read `LLM_PROMPT.md`** — five required questions before generating code
-4. **Read `BUILD_GUARDRAILS.md`** — mandatory components every generated CMS must include
-5. **Read `brand.schema.json`** — validated shape of `brand.json`
-6. Run **`npx tomorrowos init`** (or copy `templates/cms-starter/` from this package) — minimal CMS server seed
-7. **Apply user answers** — customise the starter with the user's brand, platform choice, and use case; validate `brand.json` against `brand.schema.json`
-8. **Show `PLAYER_INSTALL.md`** — after the CMS is working, show how to build and install the player on a screen
+2. **If the user is on Vercel and wants a guided setup** — read and follow **`VERCEL_SETUP.md`** (preferred for Vercel Agent)
+3. **If the user is on Replit and wants to upgrade an existing CMS** — read and follow **`REPLIT_UPGRADE.md`** (never `init --force`)
+4. **Otherwise read `LLM_PROMPT.md`** — five required questions before generating code
+5. **Read `BUILD_GUARDRAILS.md`** — mandatory components every generated CMS must include
+6. **Read `brand.schema.json`** — validated shape of `brand.json`
+7. Run **`npx tomorrowos init`** (or copy `templates/cms-starter/` from this package) — minimal CMS server seed
+8. **Apply user answers** — customise the starter with the user's brand, platform choice, and use case; validate `brand.json` against `brand.schema.json`
+9. **Show `PLAYER_INSTALL.md`** — after the CMS is working, show how to build and install the player on a screen
 
 You must not write WebSocket transport, pairing wire format, or platform-specific player bridge code in the CMS — the SDK handles server-side device sessions and HTTP helpers. You customise UI, branding, and how you call the SDK.
 
@@ -58,6 +61,20 @@ Ask me the questions in order. Do not skip steps.
 That wizard configures Supabase, prefers Cloudinary for media, and writes
 `brand.json` from your answers. On Replit, Supabase must use Secret
 **`SUPABASE_URL`** (not the reserved `DATABASE_URL`).
+
+### Vercel guided setup
+
+In Vercel Agent (or any AI setup prompt), paste:
+
+```text
+Follow @tomorrowos/sdk VERCEL_SETUP.md and set up my TomorrowOS CMS.
+IF any step contradicts Vercel, adapt to settings that Vercel can accept.
+```
+
+That wizard asks: database (**Supabase** → **Neon** → SQLite demo), media (**Cloudinary** → **Vercel Blob** → local),
+branding (manual fields or **website URL → `brand.json` only**, no login unless asked). Preview may use a thin **Next.js reverse proxy**;
+**Publish stays pure Node** `TomorrowOS.listen` (Scheme A: root `server.ts`, Next in `preview/`, `GET /status` must be JSON). Cloudinary uses **one Env popup** (all fields).
+Neon/Supabase: agent auto-sets `TOMORROWOS_STORE` + `DATABASE_SSL`. Sets `cms.hostingTarget` to `"vercel"`.
 
 ### Replit upgrade (existing CMS)
 
@@ -153,6 +170,7 @@ See `PLAYER_INSTALL.md` for installation notes.
 |------|---------|
 | `LLM_PROMPT.md` | Five-question elicitation for LLMs |
 | `REPLIT_SETUP.md` | Replit Agent guided CMS setup |
+| `VERCEL_SETUP.md` | Vercel Agent guided CMS setup |
 | `REPLIT_UPGRADE.md` | Replit Agent upgrade to latest SDK (no init) |
 | `BUILD_GUARDRAILS.md` | Mandatory CMS components |
 | `PLAYER_INSTALL.md` | Player build / install / pairing |

@@ -187,6 +187,7 @@
         <h2>On / off timer</h2>
         <p class="hint" id="onOffTimerModalHint">
           Daily on/off times follow the device clock. Off blacks the screen; the player stays powered and connected to the CMS.
+          Removing the timer stops the schedule and leaves the screen in its current on or off state until you set a timer again.
         </p>
         <div class="on-off-timer-grid">
           <label class="field-label">
@@ -200,6 +201,7 @@
         </div>
         <div class="modal-actions">
           <button type="button" id="onOffTimerSaveBtn" class="primary">Save</button>
+          <button type="button" id="onOffTimerRemoveBtn" class="danger hidden">Remove timer</button>
           <button type="button" data-close-on-off-timer-modal="1">Cancel</button>
         </div>
       </div>

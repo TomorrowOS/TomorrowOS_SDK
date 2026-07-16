@@ -283,6 +283,7 @@ body {
   border-radius: 8px;
   padding: 0.85rem 0.95rem;
   background: #fafaf9;
+  overflow: visible;
 }
 
 .device-card-header {
@@ -437,6 +438,73 @@ body {
 
 .device-meta-row {
   display: block;
+}
+
+.device-meta-row--timer-status {
+  position: relative;
+}
+
+.hardware-timer-status {
+  position: relative;
+  display: inline-block;
+  cursor: default;
+  outline: none;
+}
+
+.hardware-timer-status__value--on {
+  color: #027a48;
+  font-weight: 600;
+}
+
+.hardware-timer-status__value--off {
+  color: #667085;
+  font-weight: 600;
+}
+
+.hardware-timer-status__popup {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 0.45rem);
+  z-index: 20;
+  min-width: 9.5rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #e4e1dc;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+  color: #333;
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.45;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s;
+}
+
+.hardware-timer-status__popup::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 0.85rem;
+  border: 6px solid transparent;
+  border-top-color: #fff;
+  filter: drop-shadow(0 1px 0 #e4e1dc);
+}
+
+.hardware-timer-status__popup strong {
+  font-weight: 600;
+  color: #555;
+  margin-right: 0.35rem;
+}
+
+.hardware-timer-status:hover .hardware-timer-status__popup,
+.hardware-timer-status:focus-within .hardware-timer-status__popup {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
 }
 
 .device-card-actions {

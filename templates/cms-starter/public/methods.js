@@ -1084,6 +1084,67 @@ function appendDeviceMetaRow(meta, label, value) {
   meta.appendChild(row);
 }
 
+function hasConfiguredOnOffTimer(timer) {
+  return !!(
+    timer &&
+    typeof timer.turnOnAt === "string" &&
+    typeof timer.turnOffAt === "string" &&
+    timer.turnOnAt &&
+    timer.turnOffAt
+  );
+}
+
+function appendHardwareTimerStatusRow(meta, device) {
+  const timer = device.onOffTimer || null;
+  const configured = hasConfiguredOnOffTimer(timer);
+
+  const row = document.createElement("div");
+  row.className = "device-meta-row device-meta-row--timer-status";
+
+  const dt = document.createElement("dt");
+  dt.textContent = "Hardware timer status";
+
+  const dd = document.createElement("dd");
+  const statusWrap = document.createElement("span");
+  statusWrap.className = "hardware-timer-status";
+  statusWrap.tabIndex = 0;
+
+  const statusValue = document.createElement("span");
+  statusValue.className = configured
+    ? "hardware-timer-status__value hardware-timer-status__value--on"
+    : "hardware-timer-status__value hardware-timer-status__value--off";
+  statusValue.textContent = configured ? "On" : "Off";
+
+  const popup = document.createElement("span");
+  popup.className = "hardware-timer-status__popup";
+  popup.setAttribute("role", "tooltip");
+  if (configured) {
+    const onLine = document.createElement("div");
+    const onLabel = document.createElement("strong");
+    onLabel.textContent = "Turn on";
+    onLine.appendChild(onLabel);
+    onLine.appendChild(document.createTextNode(` ${timer.turnOnAt}`));
+
+    const offLine = document.createElement("div");
+    const offLabel = document.createElement("strong");
+    offLabel.textContent = "Turn off";
+    offLine.appendChild(offLabel);
+    offLine.appendChild(document.createTextNode(` ${timer.turnOffAt}`));
+
+    popup.appendChild(onLine);
+    popup.appendChild(offLine);
+  } else {
+    popup.textContent = "No timer configured";
+  }
+
+  statusWrap.appendChild(statusValue);
+  statusWrap.appendChild(popup);
+  dd.appendChild(statusWrap);
+  row.appendChild(dt);
+  row.appendChild(dd);
+  meta.appendChild(row);
+}
+
 function createDeviceScreenshotThumb(device) {
   const slot = document.createElement("div");
   slot.className = "device-screenshot-slot";
@@ -1250,6 +1311,7 @@ function renderDeviceCards() {
     for (const [label, value] of secondaryRows) {
       appendDeviceMetaRow(metaSecondary, label, value);
     }
+    appendHardwareTimerStatusRow(metaSecondary, device);
 
     metaBlock.appendChild(metaTop);
     metaBlock.appendChild(metaSecondary);
@@ -1833,11 +1895,17 @@ function openOnOffTimerModal(deviceId) {
   const modal = document.getElementById("onOffTimerModal");
   const onEl = document.getElementById("onOffTimerTurnOnAt");
   const offEl = document.getElementById("onOffTimerTurnOffAt");
+  const removeBtn = document.getElementById("onOffTimerRemoveBtn");
   if (!modal || !onEl || !offEl) return;
 
   const timer = device.onOffTimer || {};
+  const configured = hasConfiguredOnOffTimer(device.onOffTimer);
   onEl.value = normalizeTimeInputValue(timer.turnOnAt, "06:00");
   offEl.value = normalizeTimeInputValue(timer.turnOffAt, "18:00");
+  if (removeBtn) {
+    removeBtn.classList.toggle("hidden", !configured);
+    removeBtn.disabled = false;
+  }
   modal.classList.remove("hidden");
 }
 
@@ -1854,6 +1922,7 @@ async function saveOnOffTimerModal() {
   const onEl = document.getElementById("onOffTimerTurnOnAt");
   const offEl = document.getElementById("onOffTimerTurnOffAt");
   const saveBtn = document.getElementById("onOffTimerSaveBtn");
+  const removeBtn = document.getElementById("onOffTimerRemoveBtn");
   if (!onEl || !offEl) return;
 
   const onOffTimer = {
@@ -1867,6 +1936,7 @@ async function saveOnOffTimerModal() {
   }
 
   if (saveBtn) saveBtn.disabled = true;
+  if (removeBtn) removeBtn.disabled = true;
   try {
     const res = await fetch(`/device/${encodeURIComponent(deviceId)}/on-off-timer`, {
       method: "POST",
@@ -1885,6 +1955,43 @@ async function saveOnOffTimerModal() {
     alert(err?.message || "Could not save on/off timer");
   } finally {
     if (saveBtn) saveBtn.disabled = false;
+    if (removeBtn) removeBtn.disabled = false;
+  }
+}
+
+async function removeOnOffTimerModal() {
+  const deviceId = onOffTimerModalDeviceId;
+  if (!deviceId) return;
+
+  if (
+    !confirm(
+      "Remove the on/off timer? The screen will stay in its current on or off state until you set a timer again."
+    )
+  ) {
+    return;
+  }
+
+  const saveBtn = document.getElementById("onOffTimerSaveBtn");
+  const removeBtn = document.getElementById("onOffTimerRemoveBtn");
+  if (saveBtn) saveBtn.disabled = true;
+  if (removeBtn) removeBtn.disabled = true;
+  try {
+    const res = await fetch(`/device/${encodeURIComponent(deviceId)}/on-off-timer`, {
+      method: "DELETE"
+    });
+    const data = await res.json();
+    if (!res.ok || data.status === "failed") {
+      alert(data.error || "Could not remove on/off timer");
+      return;
+    }
+    showResult({ deviceId, onOffTimer: null, pushed: data.pushed });
+    closeOnOffTimerModal();
+    await fetchDevices();
+  } catch (err) {
+    alert(err?.message || "Could not remove on/off timer");
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+    if (removeBtn) removeBtn.disabled = false;
   }
 }
 
@@ -2213,6 +2320,9 @@ document.addEventListener("DOMContentLoaded", () => {
   document
     .getElementById("onOffTimerSaveBtn")
     ?.addEventListener("click", () => void saveOnOffTimerModal());
+  document
+    .getElementById("onOffTimerRemoveBtn")
+    ?.addEventListener("click", () => void removeOnOffTimerModal());
   document.querySelectorAll("[data-close-download-failed-modal]").forEach((el) => {
     el.addEventListener("click", closeDownloadFailedModal);
   });
