@@ -20,7 +20,7 @@ When you see this package referenced in a user prompt, your workflow is:
 4. **Otherwise read `LLM_PROMPT.md`** — five required questions before generating code
 5. **Read `BUILD_GUARDRAILS.md`** — mandatory components every generated CMS must include
 6. **Read `brand.schema.json`** — validated shape of `brand.json`
-7. Run **`npx tomorrowos init`** (or copy `templates/cms-starter/` from this package) — minimal CMS server seed
+7. Run **`npx tomorrowos init`** (Replit) or **`npx tomorrowos init --hosting v0`** (Vercel / v0) — minimal CMS server seed
 8. **Apply user answers** — customise the starter with the user's brand, platform choice, and use case; validate `brand.json` against `brand.schema.json`
 9. **Show `PLAYER_INSTALL.md`** — after the CMS is working, show how to build and install the player on a screen
 
@@ -39,7 +39,12 @@ npm install @tomorrowos/sdk
 Scaffold a new CMS project:
 
 ```bash
+# Replit / Railway / self-host (default)
 npx tomorrowos init
+
+# Vercel / v0 Publish (cms-panel + vercel.json + optional Next Preview)
+npx tomorrowos init --hosting v0
+
 cd my-tomorrowos-cms
 npm install
 npm run dev
@@ -73,7 +78,7 @@ IF any step contradicts Vercel, adapt to settings that Vercel can accept.
 
 That wizard asks: database (**Supabase** → **Neon** → SQLite demo), media (**Cloudinary** → **Vercel Blob** → local),
 branding (manual fields or **website URL → `brand.json` only**, no login unless asked). Preview may use a thin **Next.js reverse proxy**;
-**Publish stays pure Node** `TomorrowOS.listen` (Scheme A: root `server.ts`, Next in `preview/`, `GET /status` must be JSON). Cloudinary uses **one Env popup** (all fields).
+**Publish stays a Fluid Vercel Function** (`api/index.ts` + `export default server`, WebSockets per Vercel docs). Cloudinary uses **one Env popup** (all fields).
 Neon/Supabase: agent auto-sets `TOMORROWOS_STORE` + `DATABASE_SSL`. Sets `cms.hostingTarget` to `"vercel"`.
 
 ### Replit upgrade (existing CMS)

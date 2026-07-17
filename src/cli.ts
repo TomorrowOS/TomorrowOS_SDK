@@ -20,7 +20,8 @@ function getSdkVersion(): string {
   return pkg.version ?? "0.0.0";
 }
 
-const STARTER_SKIP_DIRS = new Set(["node_modules"]);
+const STARTER_SKIP_DIRS = new Set(["node_modules", ".replit-artifact"]);
+const STARTER_SKIP_FILES = new Set(["package-lock.json", ".env"]);
 
 /** Never ship local install artifacts into a new CMS project. */
 function shouldCopyStarterEntry(starterRoot: string, source: string): boolean {
@@ -28,7 +29,7 @@ function shouldCopyStarterEntry(starterRoot: string, source: string): boolean {
   if (!rel) return true;
   const parts = rel.split(path.sep).filter(Boolean);
   if (parts.some((p) => STARTER_SKIP_DIRS.has(p))) return false;
-  if (path.basename(source) === "package-lock.json") return false;
+  if (STARTER_SKIP_FILES.has(path.basename(source))) return false;
   return true;
 }
 
@@ -65,11 +66,12 @@ function patchStarterPackageJson(destDir: string): void {
   fs.writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
 }
 
-function copyStarter(destDir: string, force: boolean): void {
-  const src = path.join(packageRoot(), "templates", "cms-starter");
+function copyStarter(destDir: string, force: boolean, hosting: StarterHosting): void {
+  const templateName = hosting === "replit" ? "cms-starter" : "cms-starter-v0";
+  const src = path.join(packageRoot(), "templates", templateName);
   if (!fs.existsSync(src)) {
     console.error(
-      "[tomorrowos] Starter template not found. Re-install @tomorrowos/sdk (templates should ship with the package)."
+      `[tomorrowos] Starter template "${templateName}" not found. Re-install @tomorrowos/sdk (templates should ship with the package).`
     );
     process.exit(1);
   }
@@ -97,9 +99,23 @@ function copyStarter(destDir: string, force: boolean): void {
 
   const sdkVer = getSdkVersion();
   console.log(`[tomorrowos] Created CMS project at ${resolved}`);
+  console.log(`[tomorrowos] Template: ${templateName} (--hosting ${hosting})`);
   console.log(`[tomorrowos] @tomorrowos/sdk dependency: ^${sdkVer}`);
   console.log(`[tomorrowos] Initialized SQLite database: ${dbPath}`);
-  console.log("Next: cd there, run npm install, then npm start");
+  if (hosting === "replit") {
+    console.log("Next: npm install, then npm start (see REPLIT_SETUP.md on Replit)");
+  } else {
+    console.log("Next: npm install, then npm start (see VERCEL_SETUP.md for v0 / Vercel Publish)");
+  }
+}
+
+type StarterHosting = "replit" | "v0" | "vercel";
+
+function parseHostingFlag(argv: string[]): StarterHosting {
+  const raw = optionValue(argv, "--hosting")?.trim().toLowerCase();
+  if (!raw || raw === "replit" || raw === "here") return "replit";
+  if (raw === "v0" || raw === "vercel") return raw === "v0" ? "v0" : "vercel";
+  throw new Error('--hosting must be "replit", "v0", or "vercel".');
 }
 
 function cmdBuild(argv: string[]): void {
@@ -226,16 +242,18 @@ function printHelp(): void {
   console.log(`tomorrowos — TomorrowOS SDK CLI
 
 Usage:
-  tomorrowos init [directory]     Copy cms-starter template (default: my-tomorrowos-cms)
+  tomorrowos init [directory]     Copy cms-starter template (default: Replit / Railway)
   tomorrowos migrate [options]    Migrate TomorrowOS data between supported databases
   tomorrowos build --platform …   Placeholder; player packaging lives in the player repo
 
 Options:
+  --hosting replit|v0|vercel      init template: replit (default) or Vercel/v0 (cms-starter-v0)
   --force                         With init: copy into a non-empty directory
 
 Examples:
   npx @tomorrowos/sdk init
-  npx @tomorrowos/sdk init ./my-cms
+  npx @tomorrowos/sdk init ./my-cms --hosting replit
+  npx @tomorrowos/sdk init ./my-cms --hosting v0
   npx @tomorrowos/sdk migrate --from sqlite --from-sqlite ./data/tomorrowos.db --to supabase --to-database-url "$DATABASE_URL"
 `);
 }
@@ -272,9 +290,21 @@ async function main(): Promise<void> {
 
   if (cmd === "init") {
     const force = rest.includes("--force");
-    const pos = rest.filter((a) => !a.startsWith("-"));
-    const target = pos[0] ?? "my-tomorrowos-cms";
-    copyStarter(target, force);
+    const pos = rest.filter((a) => !a.startsWith("-") && a !== "--force");
+    let hosting: StarterHosting = "replit";
+    try {
+      hosting = parseHostingFlag(rest);
+    } catch (err) {
+      console.error("[tomorrowos]", err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+    const filteredPos = pos.filter((a) => {
+      const idx = rest.indexOf(a);
+      const prev = rest[idx - 1];
+      return prev !== "--hosting";
+    });
+    const target = filteredPos[0] ?? "my-tomorrowos-cms";
+    copyStarter(target, force, hosting);
     return;
   }
 

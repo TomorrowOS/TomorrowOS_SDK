@@ -62,7 +62,7 @@ export interface ListenOptions {
   /**
    * If set, GET requests serve files from this directory (e.g. CMS UI assets).
    * `GET /` serves `staticIndex` (default `index.html`) under this root.
-   * WebSocket upgrades on `/` are unchanged.
+   * WebSocket upgrades are accepted on `/` and common Vercel Function paths (`/api`, `/api/ws`).
    * Note: `GET /brand.json` is always served from the `brand` passed to the constructor (not from this folder).
    */
   staticRoot?: string;
@@ -71,6 +71,18 @@ export interface ListenOptions {
    * Default: `index.html`. Ignored when `staticRoot` is not set.
    */
   staticIndex?: string;
+  /**
+   * When true (default), call `server.listen(port)`.
+   * On Vercel Functions set false (or rely on auto-detect via `process.env.VERCEL`)
+   * and `export default server` — Vercel owns the socket; see
+   * https://vercel.com/docs/functions/websockets
+   */
+  autoListen?: boolean;
+  /**
+   * Pathnames that accept WebSocket upgrades (default: `/`, `/api`, `/api/ws`, …).
+   * Replit / Railway / local keep using `wss://host/`. Vercel Functions often mount at `/api`.
+   */
+  webSocketPaths?: string[];
 }
 
 type TomorrowOSEvent =
@@ -306,6 +318,31 @@ function resolveHelloDeviceId(msg: Record<string, unknown>): string | null {
       ? msg.deviceId.trim()
       : null;
   return deviceId;
+}
+
+/** Default paths that accept device WebSocket upgrades (local + Vercel Functions). */
+const DEFAULT_WEBSOCKET_PATHS = ["/", "/api", "/api/", "/api/ws", "/api/index"];
+
+function normalizeWebSocketPaths(paths?: string[]): Set<string> {
+  const list =
+    paths && paths.length > 0 ? paths : DEFAULT_WEBSOCKET_PATHS;
+  const out = new Set<string>();
+  for (const raw of list) {
+    let p = String(raw || "").trim() || "/";
+    if (!p.startsWith("/")) p = `/${p}`;
+    out.add(p);
+    if (p.length > 1 && p.endsWith("/")) out.add(p.replace(/\/+$/, ""));
+    else if (p !== "/") out.add(`${p}/`);
+  }
+  out.add("/");
+  return out;
+}
+
+function isAllowedWebSocketPath(pathname: string, allowed: Set<string>): boolean {
+  const p = !pathname || pathname === "" ? "/" : pathname;
+  if (allowed.has(p)) return true;
+  const trimmed = p.replace(/\/+$/, "") || "/";
+  return allowed.has(trimmed) || allowed.has(`${trimmed}/`);
 }
 
 const MAX_MEDIA_UPLOAD_BYTES = 100 * 1024 * 1024;
@@ -1095,6 +1132,10 @@ export class TomorrowOS extends EventEmitter {
       void this.handleHttp(req, res);
     });
 
+    // Match Vercel Functions WebSocket pattern: attach ws to the http.Server
+    // (https://vercel.com/docs/functions/websockets). Path filter keeps non-CMS
+    // upgrades from being accepted when the same process hosts other routes.
+    const allowedWsPaths = normalizeWebSocketPaths(options.webSocketPaths);
     const wss = new WebSocketServer({ noServer: true });
 
     server.on("upgrade", (request, socket, head) => {
@@ -1103,13 +1144,13 @@ export class TomorrowOS extends EventEmitter {
         return;
       }
       const { pathname } = new URL(request.url, `http://${request.headers.host}`);
-      if (pathname === "/" || pathname === "") {
-        wss.handleUpgrade(request, socket as Duplex, head, (ws) => {
-          wss.emit("connection", ws, request);
-        });
-      } else {
+      if (!isAllowedWebSocketPath(pathname, allowedWsPaths)) {
         socket.destroy();
+        return;
       }
+      wss.handleUpgrade(request, socket as Duplex, head, (ws) => {
+        wss.emit("connection", ws, request);
+      });
     });
 
     wss.on("connection", (ws: DeviceSocket) => {
@@ -1118,10 +1159,19 @@ export class TomorrowOS extends EventEmitter {
 
     this.serverStartedAt = new Date().toISOString();
 
-    server.listen(port, host, () => {
+    const onVercel = Boolean(process.env.VERCEL);
+    const shouldListen = options.autoListen ?? !onVercel;
+    if (shouldListen) {
+      server.listen(port, host, () => {
+        // eslint-disable-next-line no-console
+        console.log(`[TomorrowOS] listening on http://${host}:${port}`);
+      });
+    } else {
       // eslint-disable-next-line no-console
-      console.log(`[TomorrowOS] listening on http://${host}:${port}`);
-    });
+      console.log(
+        `[TomorrowOS] http.Server ready (autoListen=false${onVercel ? ", Vercel" : ""}; export default server)`
+      );
+    }
 
     this.httpServer = server;
     this.wss = wss;

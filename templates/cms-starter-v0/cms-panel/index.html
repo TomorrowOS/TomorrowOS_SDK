@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TomorrowOS Control Panel</title>
+    <link rel="stylesheet" href="./panel.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <h1>TomorrowOS Control Panel</h1>
+      <p>Create playlists, save with confirm, then publish selected playlists per device.</p>
+    </header>
+
+    <div class="layout">
+      <aside class="panel-playlist-nav">
+        <div class="playlist-nav-header">
+          <h2>Playlists</h2>
+          <button type="button" class="primary" id="newPlaylistBtn" title="New playlist">+</button>
+        </div>
+        <ul id="playlistCatalog" class="playlist-catalog"></ul>
+        <div class="download-players-nav-slot">
+          <button type="button" id="downloadPlayersBtn" class="download-players-trigger">
+            Download Players
+          </button>
+          <button type="button" id="updateSdkBtn" class="download-players-trigger">
+            Update SDK
+          </button>
+        </div>
+      </aside>
+
+      <main class="panel-main">
+        <section class="card server-status-card" id="serverStatusSection" aria-live="polite">
+          <div class="server-status-header">
+            <h2>Server status</h2>
+            <button type="button" id="serverStatusRefreshBtn" title="Refresh status">Refresh</button>
+          </div>
+          <p class="hint server-status-overall" id="serverStatusOverall">Checking connectors…</p>
+          <ul class="server-status-list" id="serverStatusList"></ul>
+          <div id="serverStatusBlockers" class="server-status-blockers hidden"></div>
+        </section>
+
+        <section class="card">
+          <h2>Pair device</h2>
+          <p class="hint">Enter the 6-character code on the screen (A–Z or 0–9).</p>
+          <div class="row pair-code-row">
+            <input
+              id="code"
+              class="pair-code-input"
+              type="text"
+              maxlength="6"
+              placeholder="e.g. A3K9Z1"
+              autocapitalize="characters"
+            />
+            <button type="button" class="pair-verify-btn" onclick="verify()">Verify</button>
+          </div>
+        </section>
+
+        <section class="card" id="pairedDevicesSection">
+          <h2>Paired devices</h2>
+          <div id="devicesGrid" class="devices-grid">
+            <p class="devices-empty" id="devicesEmpty">No paired devices yet.</p>
+          </div>
+        </section>
+
+        <section class="card" id="cmsUrlSection">
+          <h2>CMS URL for screens</h2>
+          <p class="hint">
+            <strong>Local development only.</strong> Defaults to this PC’s LAN IP and listen port so TVs
+            can reach media (not localhost). Change and Save if the auto-detected address is wrong.
+            Hosted CMS (e.g. Replit) uses its public URL automatically — this section is hidden there.
+          </p>
+          <div class="row">
+            <input
+              id="cmsDeviceBaseUrl"
+              type="text"
+              style="flex: 1; min-width: 16rem"
+              placeholder="Detecting LAN address…"
+            />
+            <button type="button" onclick="saveCmsDeviceBaseUrl()">Save</button>
+          </div>
+        </section>
+
+        <section class="card hidden" id="playlistEditorSection">
+          <h2 id="editorTitle">Playlist editor</h2>
+          <p class="hint">Save confirms changes. Names must be unique. Schedule applies to this playlist only.</p>
+          <label class="field-label">
+            Name
+            <input type="text" id="playlistName" placeholder="e.g. Weekday promo" />
+          </label>
+
+          <h3 class="subheading">When this playlist plays</h3>
+          <p class="hint">
+            Leave blank for always on. Uses the <strong>TV/device local clock</strong> (not CMS server time).
+            Schedule is one continuous run: <strong>from date/time → until date/time</strong>
+            (e.g. May 5 13:00 through May 8 14:00), not a daily repeat inside those dates.
+            “Until” time stops at that moment (exclusive).
+          </p>
+          <div class="schedule-grid">
+            <label>
+              Run from (date)
+              <input type="date" id="scheduleStartDate" />
+            </label>
+            <label>
+              Run from (time)
+              <input type="time" id="scheduleStartTime" />
+            </label>
+            <label>
+              Run until (date)
+              <input type="date" id="scheduleEndDate" />
+            </label>
+            <label>
+              Run until (time)
+              <input type="time" id="scheduleEndTime" />
+            </label>
+          </div>
+
+          <div class="editor-actions">
+            <button type="button" class="primary" id="savePlaylistBtn">Save playlist</button>
+            <button type="button" class="danger" id="deletePlaylistBtn">Delete playlist</button>
+          </div>
+        </section>
+
+        <pre id="result" aria-live="polite"></pre>
+      </main>
+
+      <aside class="panel-playlist">
+        <div class="playlist-header">
+          <h2>Assets</h2>
+          <button type="button" class="primary" id="addAssetBtn" title="Add image or video">+</button>
+        </div>
+        <p class="hint playlist-assets-hint">Drag ⋮⋮ to reorder assets. Save playlist to keep the new order.</p>
+        <input
+          type="file"
+          id="fileInput"
+          class="hidden"
+          accept="image/*,video/*,.wgt,.zip"
+          multiple
+        />
+        <div id="uploadStatusShell" class="upload-status hidden" aria-live="polite">
+          <div id="uploadStatusText" class="upload-status-text">Uploading...</div>
+          <div class="upload-progress-track">
+            <div id="uploadProgressBar" class="upload-progress-bar"></div>
+          </div>
+          <div id="uploadQueueText" class="upload-queue-text"></div>
+        </div>
+        <ul id="playlistList" class="playlist-list">
+          <li class="playlist-empty" id="playlistEmpty">Select or create a playlist, then add assets.</li>
+        </ul>
+      </aside>
+    </div>
+
+    <div id="publishModal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-backdrop" data-close-modal="1"></div>
+      <div class="modal-card">
+        <h2>Publish to device</h2>
+        <p class="hint" id="publishModalHint">Select playlists to add to this device. Already-published playlists are not listed here.</p>
+        <div id="publishChecklist" class="publish-checklist"></div>
+        <div id="publishStatusShell" class="publish-status hidden" aria-live="polite">
+          <div id="publishStatusText" class="publish-status-text">Working...</div>
+          <div class="upload-progress-track">
+            <div id="publishProgressBar" class="upload-progress-bar"></div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="publishConfirmBtn" class="primary">Publish selected</button>
+          <button type="button" data-close-modal="1">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="screenshotModal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-backdrop" data-close-screenshot-modal="1"></div>
+      <div class="modal-card screenshot-modal-card">
+        <h2>Latest screenshot</h2>
+        <p class="hint" id="screenshotModalHint">No screenshot loaded.</p>
+        <img id="screenshotModalImage" class="screenshot-preview hidden" alt="Latest device screenshot" />
+        <div class="modal-actions">
+          <button type="button" data-close-screenshot-modal="1">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="onOffTimerModal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-backdrop" data-close-on-off-timer-modal="1"></div>
+      <div class="modal-card">
+        <h2>On / off timer</h2>
+        <p class="hint" id="onOffTimerModalHint">
+          Daily on/off times follow the device clock. Off blacks the screen; the player stays powered and connected to the CMS.
+          Removing the timer stops the schedule and leaves the screen in its current on or off state until you set a timer again.
+        </p>
+        <div class="on-off-timer-grid">
+          <label class="field-label">
+            Turn on (unmute)
+            <input type="time" id="onOffTimerTurnOnAt" value="06:00" />
+          </label>
+          <label class="field-label">
+            Turn off (mute)
+            <input type="time" id="onOffTimerTurnOffAt" value="18:00" />
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="onOffTimerSaveBtn" class="primary">Save</button>
+          <button type="button" id="onOffTimerRemoveBtn" class="danger hidden">Remove timer</button>
+          <button type="button" data-close-on-off-timer-modal="1">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="downloadFailedModal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-backdrop" data-close-download-failed-modal="1"></div>
+      <div class="modal-card">
+        <h2>Download failed</h2>
+        <p class="hint" id="downloadFailedModalMessage">Could not download this asset.</p>
+        <p class="hint">
+          For permanent, reliable storage of media assets, configure
+          <strong>Cloudinary</strong> on your CMS server (<code>CLOUDINARY_CLOUD_NAME</code>,
+          <code>CLOUDINARY_API_KEY</code>, <code>CLOUDINARY_API_SECRET</code>). Uploads stored on
+          Cloudinary use stable public URLs that are easier to download and share.
+        </p>
+        <div class="modal-actions">
+          <button type="button" data-close-download-failed-modal="1">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="updateSdkModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="updateSdkModalTitle">
+      <div class="modal-backdrop" data-close-update-sdk-modal="1"></div>
+      <div class="modal-card update-sdk-modal-card">
+        <h2 id="updateSdkModalTitle">Update SDK</h2>
+        <p class="hint">Current installed SDK version:</p>
+        <p class="update-sdk-version" id="updateSdkVersionLabel">Loading…</p>
+        <p class="hint">
+          To upgrade on AI agent platforms (Replit, Vercel, etc.), paste this prompt into the Agent chat:
+        </p>
+        <pre class="update-sdk-prompt" id="updateSdkPromptText">Follow @tomorrowos/sdk REPLIT_UPGRADE.md to upgrade my CMS with the latest SDK.</pre>
+        <div class="modal-actions update-sdk-modal-actions">
+          <button type="button" id="copyUpdateSdkPromptBtn" class="primary">Copy prompt</button>
+          <button type="button" data-close-update-sdk-modal="1">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="downloadPlayersModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="downloadPlayersModalTitle">
+      <div class="modal-backdrop" data-close-download-players-modal="1"></div>
+      <div class="modal-card download-players-modal-card">
+        <h2 id="downloadPlayersModalTitle" class="visually-hidden">Download Players</h2>
+        <div class="player-platform-grid">
+          <div class="player-platform-cell">
+            <a
+              href="https://tmr.sh/app/brightsign/TomorrowOS_BrightSign.zip"
+              class="player-platform-link"
+              rel="noopener noreferrer"
+            >
+              <img src="./assets/player-download/brightsign.svg" alt="BrightSign" class="player-platform-logo player-platform-logo--wide" />
+            </a>
+            <p class="player-platform-caption">Supported Series 5 / 6</p>
+          </div>
+          <div class="player-platform-cell">
+            <a
+              href="https://tmr.sh/app/tizen/TomorrowOS_Tizen.zip"
+              class="player-platform-link"
+              rel="noopener noreferrer"
+            >
+              <img src="./assets/player-download/samsung.svg" alt="Samsung" class="player-platform-logo player-platform-logo--wide" />
+            </a>
+            <p class="player-platform-caption">Supported Tizen 6.5+</p>
+          </div>
+          <div class="player-platform-cell">
+            <img src="./assets/player-download/android.svg" alt="Android" class="player-platform-logo player-platform-logo--wide" />
+            <p class="player-platform-caption player-platform-caption--muted">Launching Q4 2026</p>
+          </div>
+          <div class="player-platform-cell">
+            <img src="./assets/player-download/lg-webos.svg" alt="LG webOS" class="player-platform-logo player-platform-logo--wide" />
+            <p class="player-platform-caption player-platform-caption--muted">Launching Q4 2026</p>
+          </div>
+        </div>
+        <div class="player-platform-diy">
+          <img src="./assets/player-download/toolbox.svg" alt="" class="player-platform-toolbox" />
+          <p class="player-platform-caption">Build your own player support</p>
+        </div>
+        <div class="modal-actions download-players-modal-actions">
+          <button type="button" data-close-download-players-modal="1">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="./methods.js" defer></script>
+  </body>
+</html>

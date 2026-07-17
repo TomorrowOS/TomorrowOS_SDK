@@ -1,0 +1,35 @@
+{
+  "name": "my-cms",
+  "version": "0.9.30",
+  "description": "TomorrowOS CMS for Vercel / v0 Publish (Fluid Function + WebSockets + optional Next Preview).",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch server.ts",
+    "dev:tomorrowos": "cross-env TOMORROWOS_INTERNAL_PORT=3001 tsx watch server.ts",
+    "dev:next": "cd preview && next dev -p 3000",
+    "dev:preview": "concurrently -k \"npm:dev:tomorrowos\" \"npm:dev:next\"",
+    "start": "tsx server.ts",
+    "build": "node -e \"process.exit(0)\"",
+    "build-player": "tomorrowos build --platform tizen"
+  },
+  "dependencies": {
+    "@tomorrowos/sdk": "^0.9.30",
+    "dotenv": "^17.2.3",
+    "tsx": "^4.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "next": "^15.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.5.0"
+  }
+}

@@ -1,6 +1,8 @@
 /**
- * TomorrowOS CMS server — minimal starter.
- * Uses SQLite by default so pairings/playlists survive server restarts.
+ * Shared TomorrowOS app for local Node and Vercel Functions.
+ * - Local / Railway-style: `server.ts` imports this (autoListen binds PORT).
+ * - Vercel Production: `api/index.ts` re-exports `server` (VERCEL → no listen;
+ *   Fluid Function owns the socket — see https://vercel.com/docs/functions/websockets).
  */
 
 import "dotenv/config";
@@ -12,17 +14,24 @@ import { createTomorrowOSStore, TomorrowOS } from "@tomorrowos/sdk";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const brand = JSON.parse(readFileSync(join(__dirname, "brand.json"), "utf8"));
 const store = createTomorrowOSStore({
-  // On Replit prefer SUPABASE_URL — DATABASE_URL is often a reserved Secret.
-  databaseUrl: process.env.SUPABASE_URL || process.env.DATABASE_URL,
+  databaseUrl:
+    process.env.SUPABASE_URL ||
+    process.env.NEON_DATABASE_URL ||
+    process.env.DATABASE_URL,
   sqlitePath: join(__dirname, "data", "tomorrowos.db")
 });
 
-const tomorrowos = new TomorrowOS({ brand, store });
+export const tomorrowos = new TomorrowOS({ brand, store });
 
-const server = tomorrowos.listen({
-  port: Number(process.env.PORT) || 3000,
+const port = Number(
+  process.env.TOMORROWOS_INTERNAL_PORT || process.env.PORT || 3000
+);
+
+export const server = tomorrowos.listen({
+  port,
   host: "0.0.0.0",
-  staticRoot: join(__dirname, "public"),
+  staticRoot: join(__dirname, "cms-panel")
+  // autoListen defaults to false when process.env.VERCEL is set
 });
 
 tomorrowos.on("device.paired", (event) => {
@@ -64,5 +73,3 @@ tomorrowos.on("command.failed", (event) => {
     `[TomorrowOS] command failed: ${event.commandId} (${event.method}) — ${event.error.message}`
   );
 });
-
-export default server;

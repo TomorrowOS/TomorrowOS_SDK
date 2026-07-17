@@ -5,7 +5,7 @@
 >
 > **On Vercel, this file is the setup questionnaire** (not `REPLIT_SETUP.md`, not `LLM_PROMPT.md`).
 >
-> Protocol id: `vercel-setup/1.7` — pairs with `@tomorrowos/sdk` packages that ship `templates/cms-starter` and this file.
+> Protocol id: `vercel-setup/1.8` — pairs with `@tomorrowos/sdk` **0.9.30+** (`templates/cms-starter-v0`, Fluid Functions WebSockets).
 
 ## User trigger (copy-paste)
 
@@ -19,8 +19,9 @@ If any step contradicts Vercel, adapt to settings Vercel can accept (document th
 After all setup questions are answered (including Cloudinary or Vercel Blob Env Vars if you chose those), configure and deploy — minimal verification only (Control Panel at /). Prefer Supabase Session pooler URL or Neon pooled URL. Do not treat sandbox ENETUNREACH / IPv6 :5432 errors as a hard setup failure when a pooler URL is configured for production.
 Question 3 only updates brand.json from colours/logo/name (a website URL is brand reference only — do not add CMS login/auth unless the user explicitly asks). Do not skip steps.
 Use Next.js only as a v0/Preview shell with a reverse proxy; Production Publish must remain pure Node TomorrowOS.listen (not Next).
-Before claiming Publish works: Framework Preset must be Other/null (not Next.js), package.json `start` must run TomorrowOS Node, GET /status on the production URL must return JSON (not HTML), and GET / must return the Control Panel (not 404 NOT_FOUND).
-Do not put startCommand or processes in vercel.json (v0 schema rejects them). Do not move server.ts into api/.
+Before claiming Publish works: Framework Preset must be Other/null (not Next.js), Fluid on, GET /status on the production URL must return JSON (not HTML), GET / must return the Control Panel, and WebSocket upgrade on / or /api must return 101 (not 200 HTML).
+Do not put startCommand or processes in vercel.json (v0 schema rejects them).
+Use cms-starter-v0 layout: cms-app.ts + api/index.ts (export default server) + cms-panel/ + rewrites to /api. Do not create a second TomorrowOS instance in api/ws.ts.
 ```
 
 Alternate triggers:
@@ -74,14 +75,14 @@ almost always means **Vercel still thinks this is a Next.js / static deploy**, n
 2. **Install Command** = `npm install` / `pnpm install` / `yarn` (normal install).
 3. **Build Command** = a **no-op that exits 0** (e.g. `node -e "process.exit(0)"` or `npm run build` where `build` is that no-op).  
    **Never** run `next build` for Production.
-4. **Start / Dev Command for Production** = `npm run start` / `pnpm start` → **`tsx server.ts`** (or `.mts`) that calls `TomorrowOS.listen` and **`export default server`**.
+4. **Production entry** = Fluid **Vercel Function** `api/index.ts` that **`export default server`** from shared `cms-app.ts` (see [WebSockets docs](https://vercel.com/docs/functions/websockets)). Local `npm start` may still use root `server.ts`.
 5. **Output Directory** = **empty / unset**. Do **not** set `outputDirectory: "."` as a fake static site.
-6. **Do not** create a root `api/index.ts` that exports a raw `http.Server` and catch-all `routes` to “fix” 404 — Vercel Fluid does **not** treat that as a supported handler for this CMS. That pattern causes more 404s.
+6. **Do** use a single `api/index.ts` that exports the TomorrowOS `http.Server`. **Do not** create a second TomorrowOS in `api/ws.ts`, and **do not** use bare `(req, res)` handlers that drop upgrades.
 7. If Preview needs Next, keep Next files **isolated** so Production auto-detect cannot latch onto them:
    - Prefer `preview/` (or similar) for `next.config.*`, `app/`, `pages/` used only by v0 Preview, **or**
-   - Ensure Production Framework Preset is forced to **Other** and Start Command never runs `next`.
+   - Ensure Production Framework Preset is forced to **Other** and never runs `next` as the CMS.
 
-**Setup is NOT complete** while Production `GET /` returns `404: NOT_FOUND`. Fix Framework Preset + Start Command and redeploy.
+**Setup is NOT complete** while Production `GET /` returns `404: NOT_FOUND` or WebSocket upgrade returns 200 HTML.
 
 ### Publish static trap — `public/` served without Node (read this)
 
@@ -92,11 +93,11 @@ A common **worse** failure mode than `404: NOT_FOUND`:
 - The panel shows **CMS unreachable** and console:  
   `Unexpected token 'T', "The page c"... is not valid JSON`
 
-**Root cause:** Vercel deployed `public/` as a **static site** (Output Directory = `public` or Framework=Other default *“public if it exists”*). **No Node process** is running `tsx server.ts`, so API routes never hit `TomorrowOS`.
+**Root cause:** Vercel deployed `public/` as a **static site** (Output Directory = `public` or Framework=Other default *“public if it exists”*). **No Function** is running TomorrowOS.
 
-**Fix (Scheme A — see dedicated section below):** force Vercel to run the **root `server.ts` Node entry** with Fluid. `public/` must be served **at runtime** via `staticRoot` in `listen()`, **not** as the build output directory.
+**Fix (Scheme A):** use `cms-panel/` (not `public/`), Fluid Function `api/index.ts` + rewrites, Output Directory empty. Static UI is served **at runtime** via `staticRoot` in `listen()`.
 
-**Publish gate (mandatory):** after deploy, `GET /status` must return **JSON** starting with `{`, not HTML starting with `<` or `The page`.
+**Publish gate (mandatory):** after deploy, `GET /status` must return **JSON** starting with `{`, not HTML starting with `<` or `The page`. **And** WebSocket upgrade on `/` or `/api` must return **101**.
 
 ```bash
 curl -s https://YOUR-PROJECT.vercel.app/status | head -c 80
@@ -104,7 +105,7 @@ curl -s https://YOUR-PROJECT.vercel.app/status | head -c 80
 # Failure:  The page could not be found  OR  <!DOCTYPE html>
 ```
 
-**Setup is NOT complete** while `/status` returns HTML or the panel shows the JSON parse error.
+**Setup is NOT complete** while `/status` returns HTML, the panel shows the JSON parse error, or devices cannot open `wss://`.
 
 ### Preview (v0 / Vercel Agent sandbox) — Next.js shell allowed
 
@@ -163,70 +164,74 @@ Then ask **Question 1**.
 3. **Do not invent** Cloudinary credentials, database URLs, Vercel Blob tokens, brand colours, **or LLM API keys**.
 4. **Postgres env naming:** prefer **`SUPABASE_URL`** when using Supabase; prefer **`DATABASE_URL`** when using Neon. `createTomorrowOSStore` accepts `SUPABASE_URL` then `DATABASE_URL`.
 5. **Always prefer pooled connection strings** (Supabase Session pooler port **6543**; Neon pooled host). Direct `:5432` URLs commonly fail on Vercel/sandbox with **`ENETUNREACH`** (often IPv6).
-6. **Prefer `npx @tomorrowos/sdk init`** (or `templates/cms-starter`) as the seed. Do not rebuild pairing / WebSocket / playlist APIs.
+6. **Prefer `npx @tomorrowos/sdk init --hosting v0`** (template `cms-starter-v0`: `cms-app.ts`, `api/index.ts`, `cms-panel/`, Fluid + rewrites). For Replit/Railway use default `init` (`cms-starter`). Do not rebuild pairing / WebSocket / playlist APIs.
 7. **Never commit secrets.** Use Vercel Environment Variables (+ optional non-secret flags in committed `.env.example`).
 8. **Skip Replit-only files:** do **not** create `.replit`, `.replit-artifact`, or Replit `deploymentTarget`.
 9. **SQLite is not a production store on Vercel.** Offer it only as option **3** after explicit warning. Keep `sqlitePath` as local-dev fallback in `createTomorrowOSStore`.
-10. **Enable Fluid compute** for Production WebSockets. Confirm Project settings after scaffold.
-11. **Production:** export the HTTP server Vercel can capture: `const server = tomorrowos.listen(...); export default server;` (or equivalent). **Do not** make `next start` the Production entrypoint.
+10. **Enable Fluid compute** for Production WebSockets ([docs](https://vercel.com/docs/functions/websockets)). Confirm Project settings after scaffold.
+11. **Production:** one Vercel Function exports `http.Server` from `TomorrowOS.listen` (`api/index.ts`). **Do not** make `next start` the Production entrypoint. **Do not** spin a second TomorrowOS in `api/ws.ts`.
 12. **Preview:** if the environment is v0 / Next-hardwired, install the Next reverse-proxy shell (see **Preview adapter**). Do not leave Preview broken.
-13. After Q&A: **configure → install → run/deploy → minimal verify** (Control Panel at `/`). Do not run a long test suite.
+13. After Q&A: **configure → install → run/deploy → minimal verify** (Control Panel at `/` + WS 101). Do not run a long test suite.
 14. **No inventing CMS login.** A branding URL never means “build auth.” Only add login if the user **explicitly** requests it.
 15. **Skip ≠ invent.** If the user skips media choice or a credential, do not replace it with OpenAI/auth/login questions. Stay on Q1–Q3 only.
 16. **Neon / Supabase helpers are agent-owned.** After the user pastes the DB URL, **you** set `TOMORROWOS_STORE` and `DATABASE_SSL` automatically — **do not** ask the user to fill those two.
-17. **Publish gate:** do not mark setup complete while Production returns `404: NOT_FOUND` **or** `/status` returns HTML (static `public/` trap).
-18. **Scheme A is doc-driven:** achieve Production Node Publish by **project layout + `vercel.json` + dashboard settings** during setup — **no SDK code changes** required (see **Scheme A** section).
+17. **Publish gate:** do not mark setup complete while Production returns `404: NOT_FOUND`, `/status` returns HTML, **or** WebSocket upgrade returns 200 HTML instead of 101.
+18. **Scheme A is doc-driven:** Production = Fluid Function + `export default server` per Vercel WebSockets docs — Replit starter stays unchanged.
 
 **Question order:** Q1 → Q2 → Q3 → execution checklist.
 
 ---
 
-## Scheme A — Standard Node Publish (mandatory for Production)
+## Scheme A — Vercel Functions + WebSockets (mandatory for Production)
 
-> **Goal:** Preview may use Next + proxy; **Publish** runs **only** root `server.ts` + `TomorrowOS.listen` on Vercel Fluid.  
-> **Scope:** This section is implemented entirely during setup (move files, write `vercel.json`, patch dashboard). **Do not** change `@tomorrowos/sdk` source.
+> **Goal:** Preview may use Next + proxy; **Publish** runs TomorrowOS as a **Vercel Function** (`api/index.ts`) on **Fluid**, with WebSocket support per [Vercel WebSockets docs](https://vercel.com/docs/functions/websockets).  
+> **Scope:** Layout + `vercel.json` + dashboard. Prefer `npx @tomorrowos/sdk init --hosting v0` (`cms-starter-v0`).  
+> **Do not** break Replit/Railway: those keep using default `init` → `cms-starter` (root `server.ts` + `server.listen`, no `api/`).
 
 ### Why Scheme A exists
 
 | Layer | Preview (v0) | Publish (Production) |
 |-------|----------------|----------------------|
-| Host | Next.js shell + HTTP proxy | **Node `server.ts`** only |
-| `public/` | Proxied from TomorrowOS | Served by **`staticRoot`** inside `listen()` — **not** as Vercel Output Directory |
-| WebSocket | Optional / may fail in Preview | Required on same origin (`wss://`) |
+| Host | Next.js shell + HTTP proxy | **Vercel Function** `api/index.ts` → `export default server` |
+| Static UI | Proxied from TomorrowOS | Served by **`staticRoot`** (`cms-panel/`) inside `listen()` — **not** Vercel Output Directory |
+| WebSocket | Optional / may fail in Preview | **Required** — Fluid Function upgrade (`wss://` → `/` rewritten to `/api`, or direct `/api`) |
 | Next files | Allowed under `preview/` | **Must not** live at project root |
+
+**Root cause of “Control Panel works, TV cannot connect”:** HTTP can be served without WebSocket upgrades. Classic root-only `server.ts` / plain serverless handlers often return **200 HTML** on `Upgrade` instead of **101**. Official pattern is a Function that exports `http.Server` with `ws` attached ([docs](https://vercel.com/docs/functions/websockets)).
 
 ### A1 — Project layout (Agent must enforce)
 
-**At project root (Production):**
+**Production (Vercel / v0 starter):**
 
 ```
-server.ts          ← REQUIRED name at root (or server.mts)
-vercel.json
+cms-app.ts         ← shared TomorrowOS.listen + export const server
+api/index.ts       ← export { server as default } from "../cms-app.js"
+server.ts          ← local/Preview: same default export (npm start / internal port)
+vercel.json        ← fluid + rewrites + functions.maxDuration
 package.json
 brand.json
-public/            ← CMS static UI; NOT the Vercel output directory
+cms-panel/         ← CMS static UI (NOT named public/ — avoids static-output trap)
+preview/           ← Next proxy for v0 Preview only
 ```
 
-**Preview only (when v0 needs Next) — move ALL of these under `preview/`:**
+**Preview only — keep ALL Next under `preview/`:**
 
 ```
 preview/
   next.config.mjs
-  app/               ← Next proxy routes
-  postcss.config.mjs
-  next-env.d.ts
-  tsconfig.json      ← Next/tsconfig if separate from server
+  app/
+  …
 ```
-
-**Remove from project root after move:** `next.config.mjs`, `app/`, root Next `tsconfig` plugin config, `postcss.config.mjs`, `next-env.d.ts`.
 
 **Do NOT:**
 
-- ❌ Leave `next.config.mjs` + `app/` at root while claiming Production is Node-only
-- ❌ Create root `api/index.ts` exporting `http.Server` + `routes` catch-all
-- ❌ Set Output Directory to `public` or `.`
+- ❌ Leave `next.config.mjs` + `app/` at project root
+- ❌ Set Output Directory to `public`, `cms-panel`, or `.`
+- ❌ Create a **second** TomorrowOS instance in `api/ws.ts` (separate isolate = broken pairing memory)
+- ❌ Use `(req, res) =>` serverless handlers that drop `upgrade`
+- ❌ Put `startCommand` / `processes` in `vercel.json` (v0 schema rejects them)
 
-**Update `package.json` scripts when Preview uses `preview/`:**
+**`package.json` scripts:**
 
 ```json
 {
@@ -241,105 +246,119 @@ preview/
 }
 ```
 
-### A2 — `server.ts` entry (Vercel zero-config Node detection)
+- **Local / Railway-style:** `npm start` → `tsx server.ts` → SDK calls `server.listen` (no `VERCEL` env).
+- **Vercel Production:** Function loads `api/index.ts`; SDK skips `listen` when `process.env.VERCEL` is set and Vercel owns the socket.
 
-Vercel detects a **root** `server.ts` / `server.mts` and routes traffic to it when:
+### A2 — Function entry (matches Vercel WebSockets docs)
 
-1. The file lives at **project root** (not only under `api/`)
-2. **`listen()` runs at module load** (top-level, not inside an unexported function)
-3. The file **`export default server`** (the `http.Server` from `tomorrowos.listen`)
+```ts
+// api/index.ts
+export { server as default } from "../cms-app.js";
+```
 
-Use the pattern in **Runtime & Vercel deploy rules** below. On Publish, **do not** set `TOMORROWOS_INTERNAL_PORT` — let Vercel inject `PORT`.
+```ts
+// cms-app.ts (shared)
+const server = tomorrowos.listen({
+  port: Number(process.env.PORT) || 3000,
+  host: "0.0.0.0",
+  staticRoot: join(__dirname, "cms-panel"),
+});
+export { server, tomorrowos };
+```
+
+SDK behaviour (0.9.30+):
+
+- Accepts WebSocket upgrades on `/`, `/api`, `/api/ws` (players may use either)
+- When `VERCEL` is set: **`autoListen` defaults to false** — do not bind a port yourself
+- Pattern aligns with docs: create `http.Server`, attach `ws`, **`export default server`**
 
 ### A3 — `vercel.json` (Production)
-
-**v0 / `.v0/vercel.deploy.json` schema:** only a **minimal** object is valid. These keys are **rejected** — never add them:
-
-- ❌ `startCommand`
-- ❌ `processes`
-- ❌ `routes` / `rewrites` to fake API routing
-- ❌ `outputDirectory: "public"` or `"."`
-
-Vercel discovers the start command from **`package.json` → `"start": "tsx server.ts"`**, not from `vercel.json`.
 
 ```json
 {
   "fluid": true,
   "framework": null,
   "installCommand": "npm install",
-  "buildCommand": "npm run build"
+  "buildCommand": "npm run build",
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 300,
+      "memory": 1024,
+      "includeFiles": "{cms-panel/**,brand.json,assets/**}"
+    }
+  },
+  "rewrites": [
+    { "source": "/((?!api/).*)", "destination": "/api" }
+  ]
 }
 ```
 
-Use `pnpm` / `yarn` equivalents if the project uses them.
+**`maxDuration` plan limits:** Hobby / many default plans allow **1–300** seconds. **800** requires a higher Vercel plan. Prefer **`300`** unless the account already allows more — otherwise Publish fails with *“maxDuration must be between 1 and 300… upgrade your plan”*.
+
+**Why rewrites:** Public URLs stay `https://app.vercel.app/` and `/status` while the Function mount is `/api`. Device `wss://app.vercel.app/` is rewritten to the same Function so one isolate handles HTTP + WS.
+
+**v0 schema:** never add `startCommand` or `processes`.
 
 **Critical:**
 
-- **Do not** add `startCommand` to `vercel.json` (invalid in v0; redundant on full Vercel — use `package.json` `start`)
-- **Do not** set `outputDirectory` to `public` or `.`
-- `"buildCommand"` must run the no-op `npm run build` — **never** `next build` for Production
-- Set **Output Directory empty** in the **Vercel dashboard** (Scheme A4) — that is where static-vs-Node is decided, not via invalid `vercel.json` keys
+- `"fluid": true` is required for WebSockets
+- **Do not** set `outputDirectory` to `cms-panel` / `public`
+- `"buildCommand"` = no-op — **never** `next build` for Production
+- Dashboard Output Directory must stay **empty**
 
-### A4 — Vercel Project Settings (dashboard or API — mandatory)
-
-`vercel.json` alone is **not enough** if the dashboard still shows Framework = **Next.js** or Output = `public`.
+### A4 — Vercel Project Settings (dashboard — mandatory)
 
 | Setting | Required value |
 |---------|----------------|
 | Framework Preset | **Other** / null — **not Next.js** |
-| Install Command | `npm install` (or pnpm/yarn) |
-| Build Command | `npm run build` (no-op exit 0) |
-| **Output Directory** | **empty / null** — **NOT `public`** |
-| **Start Command** | `npm run start` → `tsx server.ts` |
+| Install Command | `npm install` |
+| Build Command | `npm run build` (no-op) |
+| **Output Directory** | **empty** |
 | Fluid compute | **On** |
+| WebSockets | Account must allow Functions WebSockets (see docs “Permissions Required”) |
 
-If Framework Preset still shows **Next.js** after `vercel.json`: **patch via Vercel API / CLI / dashboard**, then redeploy.
+### A5 — Publish acceptance (all must pass)
 
-### A5 — Publish acceptance (all must pass before “setup complete”)
+1. `curl -s https://PROD/status` → JSON (`{"status":...}`)
+2. `curl -s https://PROD/` → Control Panel HTML
+3. **WebSocket upgrade returns 101**, not 200 HTML:
 
-1. Deploy logs show Node starting / `[TomorrowOS] listening on ...` (not only “Uploading static files”)
-2. `curl -s https://PROD/status` → JSON (`{"status":...}`)
-3. `curl -s https://PROD/` → Control Panel HTML
-4. Control Panel **does not** show `Unexpected token 'T'` / CMS unreachable
-5. Framework Preset = Other; Fluid on
+```bash
+curl.exe -i --http1.1 ^
+  -H "Connection: Upgrade" -H "Upgrade: websocket" ^
+  -H "Sec-WebSocket-Version: 13" ^
+  -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" ^
+  "https://PROD/"
+# Also try: https://PROD/api
+```
 
-If (2) fails but (3) passes → **static `public/` trap**. Re-apply A3 + A4; confirm dashboard Start Command + empty Output Directory; redeploy. **Do not** add `api/` catch-all. **Do not** move `server.ts` into `api/`.
+4. Control Panel does **not** show CMS unreachable / `Unexpected token 'T'`
+5. Fluid on; Framework = Other
+
+If (1)+(2) pass but (3) fails → Function is serving HTTP only. Re-check Fluid, `api/index.ts` default export, rewrites, and WebSockets permission. **Do not** invent a second `api/ws.ts` TomorrowOS instance.
 
 ### A6 — What Scheme A does **not** require
 
-- ❌ No changes to `@tomorrowos/sdk` package code
-- ❌ No `(req, res)` serverless handler refactor
-- ❌ No `next build` / `next start` on Production
-- ❌ No root `api/` directory (`api/index.ts`, `api/[...].ts`, `api/[[...slug]].ts`)
-- ❌ No `rewrites` so only `/api/status` works while `/status` stays 404
-- ❌ No renaming `start` → `dev` with `tsx watch` for Production
-- ❌ No `@vercel/node` handler that calls non-existent `tomorrowos.getStatus()`
+- ❌ No Next.js as Production CMS
+- ❌ No replacing SDK transport with hand-rolled pairing
+- ❌ No SQLite as production store on Vercel
+- ❌ No changes to Replit `cms-starter` layout for Vercel-only fixes
 
-### A7 — If v0 Publish still serves static `public/` (Path B)
+### A7 — If v0 Publish still fails (Path B / C)
 
-When **v0 Publish** keeps returning the static trap (`/` HTML OK, `/status` HTML, `Unexpected token 'T'`) **after** Scheme A is correct, the v0 deploy pipeline may not be starting the Fluid Node server.
+**Path B:** Deploy with `vercel --prod` or Git integration (full Vercel), same Scheme A layout.
 
-**Path B — deploy outside v0 Publish (recommended):**
+**Path C:** Host CMS on **Railway / Fly.io / Replit** (long-lived Node). Use Vercel only for Preview if needed.
 
-1. Keep Scheme A layout (root `server.ts`, Next only under `preview/`, minimal `vercel.json`).
-2. Connect the repo to **Vercel Git** or run **`vercel --prod`** from the project root (full Vercel CLI / dashboard deploy — not the v0 “Publish” button).
-3. In **Vercel Dashboard → Project → Settings → General**: Framework = **Other**, Output Directory = **empty**, Build = `npm run build`, **override** Install/Start if needed so Production runs `npm run start`.
-4. Redeploy; verify `curl https://PROD/status` → JSON.
+### A8 — Migrate an existing broken Vercel project
 
-**Path C — if Vercel cannot run TomorrowOS Node + WebSocket reliably:**
-
-Host the CMS on **Railway**, **Fly.io**, or **Replit Publish** (long-lived Node). Use v0/Vercel only for Preview/demo if needed.
-
-### A8 — Undo a broken Agent “api/ migration”
-
-If an Agent moved `server.ts` → `api/index.ts` / `api/[...].ts` and only `/api/status` returns JSON:
-
-1. **Restore** `server.ts` at **project root** (from git or `templates/cms-starter/server.ts`).
-2. **Delete** root `api/index.ts`, `api/[...].ts`, `api/[[...slug]].ts` (Preview proxy may stay under `preview/app/` only).
-3. Revert `package.json` `start` to `tsx server.ts` (not `tsx watch` for Production).
-4. Apply minimal `vercel.json` (A3) — no `startCommand`, no `rewrites`.
-5. Dashboard: Framework Other, Output empty, Fluid on.
-6. Redeploy via Path B if v0 Publish still fails.
+1. Scaffold/compare with `cms-starter-v0` (`init --hosting v0`) or copy:
+   - `cms-app.ts`, `api/index.ts`, `server.ts`, `vercel.json`
+   - rename `public/` → `cms-panel/` if still present
+2. Ensure **one** Function exports the **same** `server` from `cms-app.ts`
+3. Fluid on → Redeploy
+4. Verify A5 (especially WebSocket 101)
+5. On TVs: enter `https://YOUR.vercel.app/` (players also try `/api` automatically on vercel.app hosts)
 
 ---
 
@@ -347,11 +366,12 @@ If an Agent moved `server.ts` → `api/index.ts` / `api/[...].ts` and only `/api
 
 ### Production runtime (Publish)
 
-- Serve with **`tsx server.ts`** (or `server.mts` / compiled Node that still calls `TomorrowOS.listen` with `staticRoot`).
-- Keep **`@tomorrowos/sdk`** and put **`tsx` in `dependencies`** (not only `devDependencies`) if production runs via `tsx`.
+- Serve TomorrowOS via **Vercel Function** `api/index.ts` → `export default server` (Fluid + WebSockets).
+- Keep root **`server.ts`** for **local** `npm start` / Preview internal port only (same `cms-app.ts`).
+- Keep **`@tomorrowos/sdk`** (0.9.30+) and put **`tsx` in `dependencies`** for local start.
 - Node **20+**.
 - **Do not** replace the SDK with a hand-rolled server that drops WebSocket upgrades.
-- **Forbidden as the Production Deploy entrypoint:** `next start`, static export only, root `api/` fake catch-all for raw `http.Server`, or any command that does not start `TomorrowOS.listen(...)`.
+- **Forbidden as the Production CMS:** `next start`, static export only, or a bare `(req,res)` handler without `http.Server` + `ws`.
 
 ### Expected `package.json` scripts
 
@@ -361,7 +381,7 @@ If an Agent moved `server.ts` → `api/index.ts` / `api/[...].ts` and only `/api
     "dev": "tsx watch server.ts",
     "dev:preview": "concurrently -k \"npm:dev:tomorrowos\" \"npm:dev:next\"",
     "dev:tomorrowos": "cross-env PORT=3001 TOMORROWOS_INTERNAL_PORT=3001 tsx watch server.ts",
-    "dev:next": "next dev -p 3000",
+    "dev:next": "cd preview && next dev -p 3000",
     "start": "tsx server.ts",
     "build": "node -e \"process.exit(0)\""
   }
@@ -370,7 +390,8 @@ If an Agent moved `server.ts` → `api/index.ts` / `api/[...].ts` and only `/api
 
 Adapt script names / process runners as needed. **Invariant:**
 
-- **`npm start` / Production** = TomorrowOS Node only.
+- **Local `npm start`** = TomorrowOS Node with `server.listen`.
+- **Vercel Production** = Function `api/index.ts` (SDK `autoListen=false` when `VERCEL` is set).
 - **`build`** = no-op exit 0 (never `next build` for Production).
 - **Preview / v0** = Next on public port + TomorrowOS on internal port + proxy.
 
@@ -883,20 +904,21 @@ Tell the user:
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Publish `404: NOT_FOUND` | Framework Preset still **Next.js** / no Node start | Scheme A: Framework = **Other**, Start = `npm run start`, Output empty, Fluid on; redeploy |
-| Panel loads but **CMS unreachable** / `Unexpected token 'T', "The page c"...` | **`public/` deployed as static site** — no Node running | Scheme A: Output empty in dashboard, `start` in package.json; undo any `api/` migration; try **Path B** deploy |
-| Only `/api/status` returns JSON, `/status` is 404 | Wrong **api/ serverless** migration + broken rewrites | **A8 undo:** restore root `server.ts`, delete root `api/*`; never accept this as “fixed” |
-| `vercel.json` error: invalid `startCommand` | v0 schema rejects it | Remove from `vercel.json`; use `package.json` `start` + dashboard Start Command |
-| Agent moved server to `api/`, added `@vercel/node` handler | Off-protocol serverless refactor | **A8 undo** — TomorrowOS needs one root `listen()` server, not per-request handlers |
-| `vercel inspect` shows Output = `public if it exists` | Framework=Other static default | Force Output Directory **empty** in dashboard; root `server.ts`; Path B redeploy |
+| Publish `404: NOT_FOUND` | Framework Preset still **Next.js** / no Function | Scheme A: Framework = **Other**, Fluid on, `api/index.ts` + rewrites; redeploy |
+| Panel loads but **CMS unreachable** / `Unexpected token 'T', "The page c"...` | **`public/` deployed as static site** — no Function | Rename to `cms-panel/`; Output empty; Scheme A Function entry; **Path B** if needed |
+| Only `/api/status` returns JSON, `/status` is 404 | Missing **rewrites** to `/api` | Add Scheme A3 rewrite `/(.*) → /api` (exclude existing `/api/`); redeploy |
+| Control Panel OK, TV **could not connect** | WebSocket upgrade not reaching Function (200 HTML) | Fluid on; `export default server`; verify 101 on `/` and `/api`; check WebSockets permission |
+| `vercel.json` error: invalid `startCommand` | v0 schema rejects it | Remove from `vercel.json`; Function entry does not need startCommand |
+| Separate `api/ws.ts` with a second `new TomorrowOS` | Two isolates — pairing memory split | **One** Function only (`api/index.ts` → shared `cms-app.ts`) |
+| `vercel inspect` shows Output = `public if it exists` | Framework=Other static default | Force Output Directory **empty**; use `cms-panel/`; Path B redeploy |
 | Build runs `next build` / missing routes-manifest | Next auto-detected from root `next.config` / `app/` | Move Next to `preview/`; Framework null/Other; `build` = no-op |
 | Preview blank but logs show TomorrowOS listening | v0 Next intercepts public port | Add Next reverse proxy → internal TomorrowOS port |
-| Preview works, Publish broken / Next-only | Production still on Next | Switch Production entry to `tsx server.ts` / `export default server` |
+| Preview works, Publish broken / Next-only | Production still on Next | Switch Production to Fluid Function `api/index.ts` |
 | `ENETUNREACH` / IPv6 / `:5432` | Direct Postgres URL | Use **pooled** URL (Supabase `:6543` or Neon pooler) |
 | Control Panel OK, devices never stay paired after restart | SQLite / ephemeral disk | Use Supabase or Neon |
-| Uploads break / broken thumbs in prod | Local `public/uploads` | Cloudinary or Vercel Blob |
+| Uploads break / broken thumbs in prod | Local uploads only | Cloudinary or Vercel Blob |
 | Blob uploads 401 / missing token | Blob not linked | Vercel Storage → Blob + `BLOB_READ_WRITE_TOKEN` |
-| WebSocket fails on Publish | Fluid off / static-only / Next as Production | Enable Fluid; sole Node `listen()` for Publish |
+| WebSocket fails on Publish | Fluid off / static-only / Next as Production / no Function WS | Enable Fluid; Scheme A; test 101 upgrade |
 | Devices fail only on Preview | Next proxy cannot upgrade `wss` | Expected — pair on Publish URL |
 | Agent asked user to fill `TOMORROWOS_STORE` / `DATABASE_SSL` | Off-protocol | Agent must auto-set those after Neon/Supabase choice |
 | Agent asked Cloudinary key/secret in three chat turns | Off-protocol | Use **one Env popup** with all Cloudinary fields |
