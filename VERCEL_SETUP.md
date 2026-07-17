@@ -5,7 +5,28 @@
 >
 > **On Vercel, this file is the setup questionnaire** (not `REPLIT_SETUP.md`, not `LLM_PROMPT.md`).
 >
-> Protocol id: `vercel-setup/1.8` — pairs with `@tomorrowos/sdk` **0.9.30+** (`templates/cms-starter-v0`, Fluid Functions WebSockets).
+> Protocol id: `vercel-setup/1.9` — pairs with `@tomorrowos/sdk` **0.9.35+** (`templates/cms-starter-v0`, Fluid Functions WebSockets).
+>
+> **Questions source of truth:** `VERCEL_QUESTIONS.md` — Agents must **open that file and paste each Q block verbatim**. Do not paraphrase.  
+> **Copy questions verbatim from `VERCEL_QUESTIONS.md`.** Do not invent alternate Q2 options (no “Supabase Storage”, no S3, no “disable media”, no making Blob the recommended option).  
+> **`TOMORROWOS_STORE` and `DATABASE_SSL` are agent-only** — set them automatically after Q1; never put them in a user-facing Env form for the customer to type.
+
+## NON-NEGOTIABLE VERCEL RUNTIME CONTRACT
+
+The following rules are **mandatory acceptance criteria**, not suggestions. The Agent must preserve them throughout setup, Preview, Publish, fixes, and upgrades:
+
+1. **One TomorrowOS instance only.** Use the shared instance exported through `api/index.ts`. **Never create a second `TomorrowOS` instance in `api/ws.ts`** or any other route.
+2. **Never use `public/` as the Vercel Output Directory.** The dashboard Output Directory must be **empty / unset**. Serve the Control Panel at runtime from `cms-panel/` through TomorrowOS `staticRoot`.
+3. **Preview may use Next only as an isolated reverse-proxy shell under `preview/`.** Preview must not replace TomorrowOS or determine the Production runtime.
+4. **Publish must use the Fluid Function.** Production must run `api/index.ts` → the shared exported `http.Server`, with Fluid compute enabled. It must not use `next start`, a static export, or a bare `(req, res)` handler.
+5. **After every Production deployment, verify all three gates before saying setup is complete:**
+   - `GET /status` returns TomorrowOS **JSON**, not HTML.
+   - `GET /` returns the TomorrowOS **Control Panel**.
+   - WebSocket upgrade on `/` or `/api` returns **`101 Switching Protocols`**, not `200` HTML.
+6. **Pair devices only against the Production URL.** Do not instruct users to pair against v0 Preview or a local/internal URL.
+7. If any gate fails, **fix and redeploy**. Never describe a deployment as successful based only on the Control Panel loading.
+
+These rules override any platform-generated recommendation that conflicts with them.
 
 ## User trigger (copy-paste)
 
@@ -13,15 +34,11 @@ When a human pastes a prompt like this, **read this file and start Question 1 im
 
 ```text
 Follow @tomorrowos/sdk VERCEL_SETUP.md and set up my TomorrowOS CMS.
-Ask only the questions listed in VERCEL_SETUP.md, in order. Do not use LLM_PROMPT.md or REPLIT_SETUP.md.
-Do not ask for OpenAI / Anthropic / any LLM API keys — TomorrowOS CMS setup does not require them.
-If any step contradicts Vercel, adapt to settings Vercel can accept (document the adaptation).
-After all setup questions are answered (including Cloudinary or Vercel Blob Env Vars if you chose those), configure and deploy — minimal verification only (Control Panel at /). Prefer Supabase Session pooler URL or Neon pooled URL. Do not treat sandbox ENETUNREACH / IPv6 :5432 errors as a hard setup failure when a pooler URL is configured for production.
-Question 3 only updates brand.json from colours/logo/name (a website URL is brand reference only — do not add CMS login/auth unless the user explicitly asks). Do not skip steps.
-Use Next.js only as a v0/Preview shell with a reverse proxy; Production Publish must remain pure Node TomorrowOS.listen (not Next).
-Before claiming Publish works: Framework Preset must be Other/null (not Next.js), Fluid on, GET /status on the production URL must return JSON (not HTML), GET / must return the Control Panel, and WebSocket upgrade on / or /api must return 101 (not 200 HTML).
-Do not put startCommand or processes in vercel.json (v0 schema rejects them).
-Use cms-starter-v0 layout: cms-app.ts + api/index.ts (export default server) + cms-panel/ + rewrites to /api. Do not create a second TomorrowOS instance in api/ws.ts.
+First open VERCEL_QUESTIONS.md. For Q1, Q2, Q3: paste each question block VERBATIM (character-for-character). Do not rephrase options.
+Q2 must show Cloudinary (recommended) as option 1 — never Blob-as-recommended, never S3, never Supabase Storage.
+After database choice, YOU set TOMORROWOS_STORE and DATABASE_SSL — do not ask me to fill those.
+Do not use LLM_PROMPT.md or REPLIT_SETUP.md. No OpenAI/LLM API keys.
+Apply the NON-NEGOTIABLE VERCEL RUNTIME CONTRACT exactly: one TomorrowOS instance; no public/ Output Directory; Preview Next only under preview/; Publish through the Fluid Function; verify /status JSON, / Control Panel, and WebSocket 101; pair devices only with the Production URL.
 ```
 
 Alternate triggers:
@@ -128,30 +145,43 @@ v0 Preview is often a **Next.js runtime** hardwired to `next dev`. A raw `tsx se
 
 ## Questionnaire scope (STRICT)
 
-Ask **only** these questions, in **this exact order**:
+Ask **only** these questions, in **this exact order**. **Copy the “Ask exactly” blocks verbatim** — do not paraphrase options.
 
 | Step | Section | When |
 |------|---------|------|
 | 1 | **Question 1** — Database (Supabase → Neon → SQLite) | Always |
-| 2 | **Question 2** — Media storage (Cloudinary → Vercel Blob → local) | Always (after Q1) |
+| 2 | **Question 2** — Media (**Cloudinary recommended** → Vercel Blob → local) | Always (after Q1) |
 | 3 | **Question 3** — Brand / TomorrowOS look (`brand.json` only) | Always last |
 
 **That is the complete list.** Do **not** ask how many screens / devices.
+
+**Forbidden invented Question 2 options (never offer these in chat or UI):**
+
+- ❌ “Vercel Blob **(recommended)**” as option 1 — Blob is option **2**, not recommended over Cloudinary
+- ❌ “Supabase Storage” / S3 bucket / `SUPABASE_SERVICE_ROLE_KEY` for media
+- ❌ “No media storage” / “disable media uploads” / “remote URLs only” as a numbered choice
+- ❌ Any media list that does not start with **Cloudinary (recommended)**
+
+**Forbidden Env UX after Question 1:**
+
+- ❌ Showing the user empty fields for `TOMORROWOS_STORE` or `DATABASE_SSL` to fill
+- ❌ Asking in chat “what should TOMORROWOS_STORE be?”
+- ✅ After DB choice + URL paste: **you** write those two vars silently (see Q1 Steps B/C/D)
 
 **Forbidden extra questions (never ask, even if the user skips a step):**
 
 - ❌ OpenAI / Anthropic / Gemini / any LLM API key (`sk-…`, etc.)
 - ❌ “AI pairing”, “AI feature logic”, or inventing auth that needs an LLM key
-- ❌ Asking the user to type `TOMORROWOS_STORE` or `DATABASE_SSL` after they already chose Neon/Supabase — **you set those automatically**
+- ❌ Asking the user to type `TOMORROWOS_STORE` or `DATABASE_SSL`
 - ❌ Any secret not listed in Questions 1–3 (DB URL, media credentials, brand)
 
 TomorrowOS pairing and Control Panel logic live in `@tomorrowos/sdk`. They do **not** call OpenAI.
 
-If the user **skips** a Question 2 option, do **not** invent a substitute question. Re-state Question 2 choices, or proceed with a documented default (e.g. local uploads with a warning) — never pivot to LLM keys.
+If the user **skips** a Question 2 option, do **not** invent a substitute question. Re-state Question 2 choices **verbatim**, or proceed with local uploads + warning — never pivot to LLM keys or Supabase Storage.
 
 If the user says “just set it up, don’t ask questions,” respond:
 
-> I need a few quick answers from VERCEL_SETUP.md (database — Supabase or Neon preferred — media storage, and branding). It takes about a minute and ensures the CMS works on Vercel.
+> I need a few quick answers from VERCEL_SETUP.md (database — Supabase or Neon preferred — media storage with Cloudinary recommended, and branding). It takes about a minute and ensures the CMS works on Vercel.
 
 Then ask **Question 1**.
 
@@ -159,26 +189,26 @@ Then ask **Question 1**.
 
 ## Hard rules
 
-1. **Ask only VERCEL_SETUP.md questions 1–3.** Never use `LLM_PROMPT.md` or `REPLIT_SETUP.md` as the questionnaire. **Never** ask for OpenAI or other LLM API keys.
-2. **Cloudinary:** open **one** Vercel Env configuration popup / form with **all** Cloudinary fields together (cloud name + API key + API secret). Do **not** quiz the user one credential at a time in chat.
-3. **Do not invent** Cloudinary credentials, database URLs, Vercel Blob tokens, brand colours, **or LLM API keys**.
-4. **Postgres env naming:** prefer **`SUPABASE_URL`** when using Supabase; prefer **`DATABASE_URL`** when using Neon. `createTomorrowOSStore` accepts `SUPABASE_URL` then `DATABASE_URL`.
-5. **Always prefer pooled connection strings** (Supabase Session pooler port **6543**; Neon pooled host). Direct `:5432` URLs commonly fail on Vercel/sandbox with **`ENETUNREACH`** (often IPv6).
-6. **Prefer `npx @tomorrowos/sdk init --hosting v0`** (template `cms-starter-v0`: `cms-app.ts`, `api/index.ts`, `cms-panel/`, Fluid + rewrites). For Replit/Railway use default `init` (`cms-starter`). Do not rebuild pairing / WebSocket / playlist APIs.
-7. **Never commit secrets.** Use Vercel Environment Variables (+ optional non-secret flags in committed `.env.example`).
-8. **Skip Replit-only files:** do **not** create `.replit`, `.replit-artifact`, or Replit `deploymentTarget`.
-9. **SQLite is not a production store on Vercel.** Offer it only as option **3** after explicit warning. Keep `sqlitePath` as local-dev fallback in `createTomorrowOSStore`.
-10. **Enable Fluid compute** for Production WebSockets ([docs](https://vercel.com/docs/functions/websockets)). Confirm Project settings after scaffold.
-11. **Production:** one Vercel Function exports `http.Server` from `TomorrowOS.listen` (`api/index.ts`). **Do not** make `next start` the Production entrypoint. **Do not** spin a second TomorrowOS in `api/ws.ts`.
-12. **Preview:** if the environment is v0 / Next-hardwired, install the Next reverse-proxy shell (see **Preview adapter**). Do not leave Preview broken.
-13. After Q&A: **configure → install → run/deploy → minimal verify** (Control Panel at `/` + WS 101). Do not run a long test suite.
-14. **No inventing CMS login.** A branding URL never means “build auth.” Only add login if the user **explicitly** requests it.
-15. **Skip ≠ invent.** If the user skips media choice or a credential, do not replace it with OpenAI/auth/login questions. Stay on Q1–Q3 only.
-16. **Neon / Supabase helpers are agent-owned.** After the user pastes the DB URL, **you** set `TOMORROWOS_STORE` and `DATABASE_SSL` automatically — **do not** ask the user to fill those two.
-17. **Publish gate:** do not mark setup complete while Production returns `404: NOT_FOUND`, `/status` returns HTML, **or** WebSocket upgrade returns 200 HTML instead of 101.
-18. **Scheme A is doc-driven:** Production = Fluid Function + `export default server` per Vercel WebSockets docs — Replit starter stays unchanged.
+1. **Open `VERCEL_QUESTIONS.md` first.** Paste Q1 → configure → paste Q2 → configure → paste Q3. Never paraphrase question options. Never use `LLM_PROMPT.md` or `REPLIT_SETUP.md` as the questionnaire. **Never** ask for OpenAI or other LLM API keys.
+2. **Question 2 options are fixed:** (1) Cloudinary **(recommended)**, (2) Vercel Blob, (3) local disk. Do not reorder; do not invent Supabase Storage / disable-uploads.
+3. **Cloudinary:** open **one** Vercel Env popup with **all** Cloudinary fields together. Do **not** quiz one credential at a time.
+4. **`TOMORROWOS_STORE` + `DATABASE_SSL` = agent-owned.** After Q1 choice (and URL if needed), set them yourself in Vercel Env Vars. **Never** include them as blank fields for the customer. Mapping: Supabase → `TOMORROWOS_STORE=supabase` + `DATABASE_SSL=true`; Neon → `TOMORROWOS_STORE=postgres` + `DATABASE_SSL=true`; SQLite → `TOMORROWOS_STORE=sqlite` (no `DATABASE_SSL` required).
+5. **Do not invent** Cloudinary credentials, database URLs, Vercel Blob tokens, brand colours, **or LLM API keys**.
+6. **Postgres env naming:** prefer **`SUPABASE_URL`** for Supabase; prefer **`DATABASE_URL`** for Neon.
+7. **Always prefer pooled connection strings** (Supabase Session pooler **6543**; Neon pooled host).
+8. **Prefer `npx @tomorrowos/sdk init --hosting v0`**. For Replit/Railway use default `init`. Do not rebuild pairing / WebSocket APIs.
+9. **Never commit secrets.** Use Vercel Environment Variables.
+10. **Skip Replit-only files.**
+11. **SQLite is not a production store on Vercel.**
+12. **Enable Fluid compute** for Production WebSockets.
+13. **Production:** `api/index.ts` exports `http.Server` from `TomorrowOS.listen`. Not `next start`. No second TomorrowOS in `api/ws.ts`.
+14. **Preview:** Next reverse-proxy shell when v0 is Next-hardwired.
+15. After Q&A: **configure → install → deploy → minimal verify**.
+16. **No inventing CMS login** from a branding URL.
+17. **Skip ≠ invent.** Stay on Q1–Q3 only.
+18. **Publish gate:** `/status` JSON + WebSocket 101; no static `public/` trap.
 
-**Question order:** Q1 → Q2 → Q3 → execution checklist.
+**Question order:** Q1 → (auto-set store env) → Q2 → Q3 → execution checklist.
 
 ---
 
@@ -266,7 +296,7 @@ const server = tomorrowos.listen({
 export { server, tomorrowos };
 ```
 
-SDK behaviour (0.9.30+):
+SDK behaviour (0.9.32+):
 
 - Accepts WebSocket upgrades on `/`, `/api`, `/api/ws` (players may use either)
 - When `VERCEL` is set: **`autoListen` defaults to false** — do not bind a port yourself
@@ -368,7 +398,7 @@ If (1)+(2) pass but (3) fails → Function is serving HTTP only. Re-check Fluid,
 
 - Serve TomorrowOS via **Vercel Function** `api/index.ts` → `export default server` (Fluid + WebSockets).
 - Keep root **`server.ts`** for **local** `npm start` / Preview internal port only (same `cms-app.ts`).
-- Keep **`@tomorrowos/sdk`** (0.9.30+) and put **`tsx` in `dependencies`** for local start.
+- Keep **`@tomorrowos/sdk`** (0.9.32+) and put **`tsx` in `dependencies`** for local start.
 - Node **20+**.
 - **Do not** replace the SDK with a hand-rolled server that drops WebSocket upgrades.
 - **Forbidden as the Production CMS:** `next start`, static export only, or a bare `(req,res)` handler without `http.Server` + `ws`.
@@ -554,7 +584,18 @@ If Vercel’s UI and this file disagree on bundling, **prefer whatever keeps a s
 
 ## Question 1 — Database (always)
 
-> **Do not** ask screen counts. Present all three options; recommend **Supabase** for Vercel fleets.
+> **Do not** ask screen counts. Present all three options; recommend **Supabase** for Vercel fleets.  
+> **After the user picks a database:** collect the URL if needed, then **you** set `TOMORROWOS_STORE` + `DATABASE_SSL` (see mapping below). The customer must **never** be asked to type those two names or values.
+
+### Agent-owned env mapping (mandatory)
+
+| User chose | You set (silently) | User only provides |
+|------------|--------------------|--------------------|
+| 1 Supabase | `TOMORROWOS_STORE=supabase`, `DATABASE_SSL=true` | `SUPABASE_URL` (pooler string) |
+| 2 Neon | `TOMORROWOS_STORE=postgres`, `DATABASE_SSL=true` | `DATABASE_URL` (pooled string) |
+| 3 SQLite | `TOMORROWOS_STORE=sqlite` | Confirmation only |
+
+If you open an Env configuration UI for Q1, fields visible to the user may include **only** `SUPABASE_URL` or `DATABASE_URL`. **Do not** show blank `TOMORROWOS_STORE` / `DATABASE_SSL` inputs — write those yourself in the same step.
 
 ### Step A — Ask storage choice
 
@@ -572,9 +613,9 @@ If Vercel’s UI and this file disagree on bundling, **prefer whatever keeps a s
 
 ### Step B — If **1 / Supabase**
 
-**Ask exactly (connection string only):**
+**Ask exactly (connection string only — not TOMORROWOS_STORE / DATABASE_SSL):**
 
-> Paste your Supabase Postgres connection string. I will store it as **`SUPABASE_URL`**.
+> Paste your Supabase Postgres connection string. I will store it as **`SUPABASE_URL`**. I will set **`TOMORROWOS_STORE`** and **`DATABASE_SSL`** for you automatically.
 >
 > In Supabase: **Project Settings → Database → Connection string → Connection pooling** (Session mode).  
 > Preferred shape:  
@@ -582,36 +623,36 @@ If Vercel’s UI and this file disagree on bundling, **prefer whatever keeps a s
 >
 > **Do not** use the direct host `db.*.supabase.co:5432` for Vercel.
 
-**You must then (automatic — do NOT ask the user to type these):**
+**You must then (automatic — do NOT ask the user to type store/ssl vars):**
 
-1. Set Vercel Env Vars:
-   - `SUPABASE_URL=<user pooler string>`
-   - `TOMORROWOS_STORE=supabase` ← **agent sets this**
-   - `DATABASE_SSL=true` ← **agent sets this** (unless user already said SSL is off)
-2. Wire `server.ts` as in **Runtime & Vercel deploy rules**.
+1. Set Vercel Env Vars in one step:
+   - `SUPABASE_URL=<user pooler string>` ← from user
+   - `TOMORROWOS_STORE=supabase` ← **you set; never ask**
+   - `DATABASE_SSL=true` ← **you set; never ask**
+2. Wire `cms-app.ts` / `server.ts` store as in **Runtime & Vercel deploy rules**.
 3. Optional committed `.env.example` with **placeholders only**.
 4. **Do not** commit the real connection string.
-5. **Do not** open a second form asking for `TOMORROWOS_STORE` or `DATABASE_SSL`.
+5. **Do not** open a form whose blank fields include `TOMORROWOS_STORE` or `DATABASE_SSL`.
 
 ### Step C — If **2 / Neon**
 
 **Ask exactly (connection string only):**
 
-> Paste your **Neon pooled** Postgres connection string. I will store it as **`DATABASE_URL`**.
+> Paste your **Neon pooled** Postgres connection string. I will store it as **`DATABASE_URL`**. I will set **`TOMORROWOS_STORE`** and **`DATABASE_SSL`** for you automatically.
 >
 > In Neon: **Dashboard → Connection details → Pooled connection**.  
 > Typical shape:  
 > `postgresql://[user]:[password]@[endpoint]-pooler.[region].aws.neon.tech/[dbname]?sslmode=require`
 
-**You must then (automatic — do NOT ask the user to type these):**
+**You must then (automatic):**
 
 1. Set Vercel Env Vars:
-   - `DATABASE_URL=<user pooled string>`
-   - `TOMORROWOS_STORE=postgres` ← **agent sets this**
-   - `DATABASE_SSL=true` ← **agent sets this**
-2. Wire `server.ts` — `createTomorrowOSStore` uses `PostgresStore` for `postgres` / `supabase` drivers.
+   - `DATABASE_URL=<user pooled string>` ← from user
+   - `TOMORROWOS_STORE=postgres` ← **you set; never ask**
+   - `DATABASE_SSL=true` ← **you set; never ask**
+2. Wire `createTomorrowOSStore` for Postgres.
 3. **Do not** commit the real connection string.
-4. **Do not** ask the user to fill `TOMORROWOS_STORE` or `DATABASE_SSL` in chat or in an Env popup. Those are derived from choosing Neon.
+4. **Do not** ask the user to fill `TOMORROWOS_STORE` or `DATABASE_SSL` in chat or Env UI.
 5. If you see `ENETUNREACH` on `:5432`, switch to Neon’s **pooled** URL.
 
 ### Step D — If **3 / SQLite**
@@ -625,7 +666,7 @@ Only proceed after the user explicitly confirms.
 **You must then (automatic):**
 
 1. Set `TOMORROWOS_STORE=sqlite` yourself (do not ask the user to type it).
-2. Keep `sqlitePath` in `server.ts` for `data/tomorrowos.db`.
+2. Keep `sqlitePath` for `data/tomorrowos.db`.
 3. Warn again in the final summary that they should move to Supabase or Neon for real devices.
 
 **Later in Question 3:** set `cms.hostingTarget` to **`"vercel"`** (all Q1 branches).
@@ -635,21 +676,24 @@ Only proceed after the user explicitly confirms.
 ## Question 2 — Media storage
 
 > **This question is only about media files (images/videos).**  
-> It is **not** about OpenAI, AI pairing, or LLM keys. If you are about to ask for an `sk-` key, **stop** — you are off-protocol.
+> It is **not** about OpenAI, AI pairing, or LLM keys. If you are about to ask for an `sk-` key, **stop** — you are off-protocol.  
+> **Copy the three options below verbatim.** Wrong examples that must **never** appear: “Vercel Blob (recommended)”, “Supabase Storage”, “No media storage / disable uploads”.
 
 ### Step A — Ask storage choice
 
-**Ask exactly:**
+**Ask exactly (wording must match — Cloudinary is recommended):**
 
 > How should playlist media (images/videos) be stored?
 >
-> **1. Cloudinary (recommended)** — durable public HTTPS URLs (`https://res.cloudinary.com/...`). Works out of the box with `@tomorrowos/sdk` auto-detection.
+> **1. Cloudinary (recommended)** — durable public HTTPS URLs (`https://res.cloudinary.com/...`). Works out of the box with `@tomorrowos/sdk` auto-detection. **Prefer this on Vercel.**
 >
-> **2. Vercel Blob** — Vercel-native object storage; durable `https://*.public.blob.vercel-storage.com/...` URLs. Good when you want media on the same Vercel project without a Cloudinary account.
+> **2. Vercel Blob** — Vercel-native object storage; durable `https://*.public.blob.vercel-storage.com/...` URLs. Use when you want media on the same Vercel project without a Cloudinary account.
 >
-> **3. Local disk only** — `public/uploads` (OK for quick local tests; **not** for production Vercel fleets — files are ephemeral).
+> **3. Local disk only** — `cms-panel/uploads` or `public/uploads` (OK for quick local tests; **not** for production Vercel fleets — files are ephemeral).
 >
 > Reply with **1**, **2**, or **3** (or “Cloudinary” / “Vercel Blob” / “local”).
+
+If you catch yourself about to offer Blob-as-recommended, Supabase Storage, or “no media”, **stop and paste the block above instead**.
 
 ### Step B — If **1 / Cloudinary** (same Question 2 — **one Env popup**)
 
@@ -837,8 +881,8 @@ Then (**Scheme A — mandatory for Publish**):
 |------|----------|--------------|
 | `SUPABASE_URL` | If Q1 = Supabase | User pastes URL |
 | `DATABASE_URL` | If Q1 = Neon | User pastes URL |
-| `TOMORROWOS_STORE` | Yes | **Agent auto-sets** (`supabase` / `postgres` / `sqlite`) |
-| `DATABASE_SSL` | Yes for Postgres | **Agent auto-sets** `true` |
+| `TOMORROWOS_STORE` | Yes | **Agent auto-sets only** — never a blank field for the user (`supabase` / `postgres` / `sqlite`) |
+| `DATABASE_SSL` | Yes for Postgres | **Agent auto-sets only** — never a blank field for the user (`true`) |
 | `CLOUDINARY_*` | If Q2 = Cloudinary | User via **one Env popup** (all fields) |
 | `BLOB_READ_WRITE_TOKEN` | If Q2 = Vercel Blob | User / Blob link |
 | `TOMORROWOS_INTERNAL_PORT` | Preview only | Agent (e.g. `3001`) |
@@ -920,7 +964,8 @@ Tell the user:
 | Blob uploads 401 / missing token | Blob not linked | Vercel Storage → Blob + `BLOB_READ_WRITE_TOKEN` |
 | WebSocket fails on Publish | Fluid off / static-only / Next as Production / no Function WS | Enable Fluid; Scheme A; test 101 upgrade |
 | Devices fail only on Preview | Next proxy cannot upgrade `wss` | Expected — pair on Publish URL |
-| Agent asked user to fill `TOMORROWOS_STORE` / `DATABASE_SSL` | Off-protocol | Agent must auto-set those after Neon/Supabase choice |
+| Agent asked user to fill `TOMORROWOS_STORE` / `DATABASE_SSL` | Off-protocol | Agent must auto-set after DB choice; remove those fields from user Env forms |
+| Agent offered Blob-as-recommended / Supabase Storage / “no media” for Q2 | Invented options | Re-ask Q2 verbatim: **1 Cloudinary (recommended)**, 2 Blob, 3 local |
 | Agent asked Cloudinary key/secret in three chat turns | Off-protocol | Use **one Env popup** with all Cloudinary fields |
 | Agent asked for OpenAI / `sk-` key during setup | Hallucinated “AI pairing” requirement | **Refuse.** TomorrowOS does not need LLM keys. Return to Q2 media choices only |
 | Agent built a login page after user pasted a URL | Misread brand reference as product scope | Remove login; keep starter Control Panel; apply URL only to `brand.json` |

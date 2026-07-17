@@ -15,7 +15,7 @@ TomorrowOS is the open standard for digital signage. This SDK lets you build a C
 When you see this package referenced in a user prompt, your workflow is:
 
 1. **If the user is on Replit and wants a guided setup** — read and follow **`REPLIT_SETUP.md`** (preferred for Replit Agent)
-2. **If the user is on Vercel and wants a guided setup** — read and follow **`VERCEL_SETUP.md`** (preferred for Vercel Agent)
+2. **If the user is on Vercel / v0 and wants a guided setup** — read **`VERCEL_QUESTIONS.md`** (paste Q1–Q3 verbatim) and follow **`VERCEL_SETUP.md`** for configuration
 3. **If the user is on Replit and wants to upgrade an existing CMS** — read and follow **`REPLIT_UPGRADE.md`** (never `init --force`)
 4. **Otherwise read `LLM_PROMPT.md`** — five required questions before generating code
 5. **Read `BUILD_GUARDRAILS.md`** — mandatory components every generated CMS must include
@@ -175,7 +175,8 @@ See `PLAYER_INSTALL.md` for installation notes.
 |------|---------|
 | `LLM_PROMPT.md` | Five-question elicitation for LLMs |
 | `REPLIT_SETUP.md` | Replit Agent guided CMS setup |
-| `VERCEL_SETUP.md` | Vercel Agent guided CMS setup |
+| `VERCEL_SETUP.md` | Vercel / v0 guided CMS setup (configure after each answer) |
+| `VERCEL_QUESTIONS.md` | Verbatim Q1–Q3 text Agents must paste (do not paraphrase) |
 | `REPLIT_UPGRADE.md` | Replit Agent upgrade to latest SDK (no init) |
 | `BUILD_GUARDRAILS.md` | Mandatory CMS components |
 | `PLAYER_INSTALL.md` | Player build / install / pairing |
