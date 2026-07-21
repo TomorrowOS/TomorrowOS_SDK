@@ -4,6 +4,8 @@
 
 **On Replit:** if the user asks to set up / configure a CMS interactively, follow **`REPLIT_SETUP.md`** instead (Q&A for store → media → `brand.json`).
 
+**On Lovable:** if the user asks to set up / configure a CMS interactively, follow **`LOVABLE_SETUP.md`** (same Q1–Q3 shape; Lovable Cloud Storage replaces Replit Object Storage; Node CMS must deploy to Railway / Render / Fly or Vercel Fluid — Lovable Cloud Publish alone is not the WebSocket host).
+
 **On Vercel:** if the user asks to set up / configure a CMS interactively, follow **`VERCEL_SETUP.md`** (Supabase or Neon pooled Postgres, Cloudinary or Vercel Blob media, v0 Preview Next proxy shell + **Publish = Node only**, Fluid compute + WebSocket, `cms.hostingTarget: "vercel"`).
 
 TomorrowOS is the open standard for digital signage. This SDK lets you build a CMS that controls Samsung Tizen, BrightSign, LG webOS, Android, ChromeOS, and Windows screens through a single unified API.
@@ -15,14 +17,15 @@ TomorrowOS is the open standard for digital signage. This SDK lets you build a C
 When you see this package referenced in a user prompt, your workflow is:
 
 1. **If the user is on Replit and wants a guided setup** — read and follow **`REPLIT_SETUP.md`** (preferred for Replit Agent)
-2. **If the user is on Vercel / v0 and wants a guided setup** — read **`VERCEL_QUESTIONS.md`** (paste Q1–Q3 verbatim) and follow **`VERCEL_SETUP.md`** for configuration
-3. **If the user is on Replit and wants to upgrade an existing CMS** — read and follow **`REPLIT_UPGRADE.md`** (never `init --force`)
-4. **Otherwise read `LLM_PROMPT.md`** — five required questions before generating code
-5. **Read `BUILD_GUARDRAILS.md`** — mandatory components every generated CMS must include
-6. **Read `brand.schema.json`** — validated shape of `brand.json`
-7. Run **`npx tomorrowos init`** (Replit) or **`npx tomorrowos init --hosting v0`** (Vercel / v0) — minimal CMS server seed
-8. **Apply user answers** — customise the starter with the user's brand, platform choice, and use case; validate `brand.json` against `brand.schema.json`
-9. **Show `PLAYER_INSTALL.md`** — after the CMS is working, show how to build and install the player on a screen
+2. **If the user is on Lovable and wants a guided setup** — read and follow **`LOVABLE_SETUP.md`** (preferred for Lovable Agent)
+3. **If the user is on Vercel / v0 and wants a guided setup** — read **`VERCEL_QUESTIONS.md`** (paste Q1–Q3 verbatim) and follow **`VERCEL_SETUP.md`** for configuration
+4. **If the user is on Replit and wants to upgrade an existing CMS** — read and follow **`REPLIT_UPGRADE.md`** (never `init --force`)
+5. **Otherwise read `LLM_PROMPT.md`** — five required questions before generating code
+6. **Read `BUILD_GUARDRAILS.md`** — mandatory components every generated CMS must include
+7. **Read `brand.schema.json`** — validated shape of `brand.json`
+8. Run **`npx tomorrowos init`** (Replit / Lovable→Node host) or **`npx tomorrowos init --hosting v0`** (Vercel / v0) — minimal CMS server seed
+9. **Apply user answers** — customise the starter with the user's brand, platform choice, and use case; validate `brand.json` against `brand.schema.json`
+10. **Show `PLAYER_INSTALL.md`** — after the CMS is working, show how to build and install the player on a screen
 
 You must not write WebSocket transport, pairing wire format, or platform-specific player bridge code in the CMS — the SDK handles server-side device sessions and HTTP helpers. You customise UI, branding, and how you call the SDK.
 
@@ -61,11 +64,32 @@ In Replit Agent, paste:
 ```text
 Follow @tomorrowos/sdk REPLIT_SETUP.md and set up my TomorrowOS CMS.
 Ask me the questions in order. Do not skip steps.
+Q1 database order: Supabase (Recommended), then Built-in Replit PostgreSQL, then SQLite.
+If Supabase: collect SUPABASE_URL once only. Question 3 branding is all optional (defaults from brand.json).
 ```
 
-That wizard configures Supabase, prefers Cloudinary for media, and writes
-`brand.json` from your answers. On Replit, Supabase must use Secret
-**`SUPABASE_URL`** (not the reserved `DATABASE_URL`).
+That wizard asks database choice (**Supabase recommended first**), prefers Cloudinary for media, and writes
+`brand.json` from optional branding answers (missing fields keep starter defaults). On Replit, Supabase must use Secret
+**`SUPABASE_URL`** (not the reserved `DATABASE_URL` — that is for built-in Replit PostgreSQL).
+
+### Lovable guided setup
+
+In Lovable Agent, paste:
+
+```text
+Follow @tomorrowos/sdk LOVABLE_SETUP.md and set up my TomorrowOS CMS.
+Ask only the questions listed in LOVABLE_SETUP.md, in order. Do not use LLM_PROMPT.md.
+Do not build a Vite/React mock of TomorrowOS — use @tomorrowos/sdk cms-starter (Node + WebSocket).
+Question 3 only updates brand.json.
+After setup questions (including Cloudinary Secrets if chosen), configure and deploy — minimal verification only.
+Never test Supabase connection — save SUPABASE_URL and move on. No Supabase or WebSocket tests.
+Do not skip steps.
+```
+
+That wizard mirrors Replit Q1–Q3. Media alternative to Cloudinary is **Lovable Cloud Storage**
+(public bucket `tomorrowos-uploads`) instead of Replit Object Storage. The TV-facing CMS
+must still run on a **Node host** (Railway / Render / Fly, or Vercel Fluid via `VERCEL_SETUP.md`) —
+Lovable Cloud Publish alone is not a WebSocket CMS.
 
 ### Vercel guided setup
 
@@ -175,6 +199,7 @@ See `PLAYER_INSTALL.md` for installation notes.
 |------|---------|
 | `LLM_PROMPT.md` | Five-question elicitation for LLMs |
 | `REPLIT_SETUP.md` | Replit Agent guided CMS setup |
+| `LOVABLE_SETUP.md` | Lovable Agent guided CMS setup (Node host + Lovable Cloud Storage) |
 | `VERCEL_SETUP.md` | Vercel / v0 guided CMS setup (configure after each answer) |
 | `VERCEL_QUESTIONS.md` | Verbatim Q1–Q3 text Agents must paste (do not paraphrase) |
 | `REPLIT_UPGRADE.md` | Replit Agent upgrade to latest SDK (no init) |

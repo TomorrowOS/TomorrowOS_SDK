@@ -12,8 +12,11 @@ When a human pastes a prompt like this, **read this file and start Question 1 im
 ```text
 Follow @tomorrowos/sdk REPLIT_SETUP.md and set up my TomorrowOS CMS.
 Ask only the questions listed in REPLIT_SETUP.md, in order. Do not use LLM_PROMPT.md.
-Artifact kind must be **web** (never **api**). Question 3 only updates **brand.json**.
-After all setup questions are answered (including Cloudinary Secrets if you chose Cloudinary), configure and start — minimal verification only (Web app type + Preview at /). **Never test Supabase connection** — save `SUPABASE_URL` and move on. No Supabase or WebSocket tests.
+Artifact kind must be **web** (never **api**).
+Question 1 database options in this order: 1) Supabase (Recommended) 2) Built-in Replit PostgreSQL 3) SQLite.
+If Supabase: collect SUPABASE_URL once only — never ask for the connection string twice.
+Question 3 branding fields are all optional; missing values keep starter brand.json defaults.
+After all setup questions are answered (including Cloudinary Secrets if you chose Cloudinary), configure and start — minimal verification only (Web app type + Preview at /). **Never test database connection** in Preview — configure and move on. No DB or WebSocket tests.
 Do not skip steps.
 ```
 
@@ -58,20 +61,28 @@ Replit Agent must ask **only** the questions defined in **this file**, in **this
 
 | Step | Section | When |
 |------|---------|------|
-| 1 | **Question 1** — Supabase connection string | Always |
+| 1 | **Question 1** — Database choice (Supabase → Replit Postgres → SQLite) | Always |
 | 2 | **Question 2** — Media storage (+ Cloudinary Secrets if chosen) | Always (after Q1) |
-| 3 | **Question 3** — Brand / TomorrowOS app look | Always last, before execution |
+| 3 | **Question 3** — Brand / TomorrowOS app look (**all fields optional**) | Always last, before execution |
 
 **That is the complete list.** There are no other setup questions. **Do not** ask how many screens / devices. There is **no** “Question 2b” — Cloudinary credentials are collected **inside Question 2**, immediately after the user chooses Cloudinary.
 
+**Critical — Question 1 option order (exact):** Present database choices in **this order only**:
+1. **Supabase Postgres (Recommended)**
+2. **Built-in Replit PostgreSQL**
+3. **SQLite (local file — fine for testing)**
+
+**Critical — Supabase path collected once only:** If the user picks Supabase, collect `SUPABASE_URL` in **one** step (Secrets UI **or** chat paste — not both). After it is saved, **never** ask for the connection string / `SUPABASE_URL` again (not in Q2, Q3, execution, Publish, or “confirm Secrets”).
+
 **Critical:** Question 2 is **not complete** when the user says “Cloudinary” or “yes”. You **must** immediately show the Cloudinary Secrets input (same step — do **not** label a new question) and collect `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` **before** Question 3. Do **not** skip to branding with placeholder or invented credentials.
 
+**Critical — Question 3:** Every branding field is **optional**. Empty / skip / “use defaults” → keep values from the starter **`brand.json`**. Do **not** re-ask for missing name or colours.
 
-If the user volunteers extra info early (e.g. brand name before Q3), **record it** and still ask the current question’s required fields you do not yet have. Do not skip ahead to execution until Q1–Q3 are complete (Question 2 includes Cloudinary Secrets when applicable).
+If the user volunteers extra info early (e.g. brand name before Q3), **record it** and still ask the current question’s required fields you do not yet have. Do not skip ahead to execution until Q1–Q3 are complete (Question 2 includes Cloudinary Secrets when applicable). For Q3, “complete” includes the user skipping or leaving fields blank.
 
 If the user says “just set it up, don’t ask questions,” respond:
 
-> I need a few quick answers from REPLIT_SETUP.md (Supabase connection string, media storage — plus Cloudinary credentials if you choose Cloudinary — and branding). It takes about a minute and ensures the CMS deploys correctly on Replit.
+> I need a few quick answers from REPLIT_SETUP.md (database choice — Supabase recommended, then Replit Postgres, then SQLite — media storage — plus Cloudinary credentials if you choose Cloudinary — and optional branding). It takes about a minute and ensures the CMS deploys correctly on Replit.
 
 Then ask **Question 1** — do not switch to `LLM_PROMPT.md`.
 
@@ -82,12 +93,15 @@ Then ask **Question 1** — do not switch to `LLM_PROMPT.md`.
 1. **Ask only REPLIT_SETUP.md questions 1–3** (see **Questionnaire scope**). Never use `LLM_PROMPT.md` on Replit.
 2. **One question at a time.** Wait for the user’s answer before asking the next question (unless they already answered several in one message). **Exception:** If the user chooses Cloudinary in Question 2, **stay on Question 2** and immediately show the Secrets form — do **not** open a separate “2b” step or announce a new question number.
 3. **Do not invent** Cloudinary credentials, Supabase URLs, or brand colours. **Do not ask** screen / device count.
-4. **Do not use Replit’s reserved `DATABASE_URL` Secret for Supabase.** On Replit, `DATABASE_URL` is often pre-claimed. Always use **`SUPABASE_URL`** for TomorrowOS ↔ Supabase.
+4. **Do not use Replit’s reserved `DATABASE_URL` Secret for Supabase.** On Replit, `DATABASE_URL` is often the **built-in Replit PostgreSQL** URL. For Supabase always use **`SUPABASE_URL`**. For built-in Replit Postgres, use **`DATABASE_URL`** with `TOMORROWOS_STORE=postgres`.
+4a. **If Supabase is chosen: never collect `SUPABASE_URL` twice.** One capture after the choice is enough for the whole wizard and execution checklist.
+4b. **Question 3 fields are all optional.** Missing values → keep starter `brand.json` defaults; do not block or re-prompt.
+4c. **`TOMORROWOS_STORE` + `DATABASE_SSL` are agent-owned.** After the Q1 choice (and URL if needed), set them yourself. Never ask the user to type those names/values.
 5. **Prefer `npx @tomorrowos/sdk init`** (or the package’s `templates/cms-starter`) as the project seed. Do not rebuild pairing, WebSocket, or playlist APIs from scratch.
 6. **Never commit secrets** into git. Put credentials only in Replit **Secrets** (and optionally mirror non-secret flags in `.env` that reference env vars).
 7. After Q&A, **configure and start** — do **not** run a long test suite (see **Post-Q&A: minimal verification only**).
 8. **Follow the Runtime & Replit publish rules below exactly.** A project that cannot Deploy / Publish on Replit is incomplete.
-9. **Supabase: configure only — never test.** Save `SUPABASE_URL` + `TOMORROWOS_STORE=supabase` and proceed. **Do not** ping Postgres, run `psql`, start the server solely to verify DB connectivity, or treat log errors like `ENOTFOUND` / `database connection failure` in **Replit dev / Preview** as a failed setup. Supabase often works only after **Publish** (production networking), not in the dev shell.
+9. **Database: configure only — never test in Preview.** Save store Secrets / flags and proceed. **Do not** ping Postgres, run `psql`, or treat `ENOTFOUND` / `database connection failure` in **Replit dev / Preview** as a failed setup (especially Supabase).
 10. **Artifact kind = `web` only.** **`kind = "api"` is forbidden** for the TomorrowOS CMS artifact. See **IRON RULE** above. Setup is incomplete if Publish would still see an `api` artifact.
 
 **Question order (always):**
@@ -330,17 +344,17 @@ Replace `YOUR-REPLIT-DOMAIN` with the actual published hostname (e.g. `my-cms.re
 
 After Questions 1–3, **configure → `npm install` → `npm run start` → done.**
 
-### Supabase: never test in Replit dev (mandatory)
+### Database / Postgres: never test in Replit dev (mandatory)
 
-Setup always uses Supabase: **save credentials + wire `server.ts` + start** — **nothing else**.
+After Q1, **save credentials / flags + wire `server.ts` + start** — **nothing else**.
 
 **Forbidden after Q&A (and after Question 1):**
 
-- ❌ “Testing Supabase connection…”
+- ❌ “Testing Supabase / Postgres connection…”
 - ❌ `psql`, `pg`, Prisma `db pull`, or any one-off DB probe script
 - ❌ Restarting / debugging the server **because** logs show `database connection failure`, `getaddrinfo ENOTFOUND`, or `db.*.supabase.co can't be resolved`
 - ❌ Telling the user their Supabase URL is wrong **only** because dev Preview cannot resolve the host
-- ❌ Blocking setup completion on Supabase connectivity
+- ❌ Blocking setup completion on database connectivity
 
 **Expected in Replit dev:** Supabase host may **not resolve** in the dev environment. That is **normal**. The Control Panel at `/` can still load. Mark setup **complete** when Web app type is correct and Preview shows the Control Panel — **even if** Supabase errors appear in logs.
 
@@ -356,7 +370,7 @@ Setup always uses Supabase: **save credentials + wire `server.ts` + start** — 
 
 ### Do NOT run after setup (unless user asks or Publish fails)
 
-- ❌ **Supabase connection test** — **never**, including after `npm run start` (no `psql`, no DB ping, no “verifying database…”, no retry loops for `ENOTFOUND`)
+- ❌ **Database connection test** — **never**, including after `npm run start` (no `psql`, no DB ping, no “verifying database…”, no retry loops for `ENOTFOUND`)
 - ❌ **Cloudinary upload test**
 - ❌ **`curl` / `fetch` on `/brand.json`** as a formal gate
 - ❌ **Browser WebSocket console snippet** as a formal gate
@@ -372,29 +386,94 @@ Then (and only then) check: API vs Web type → `.replit` ports/`deploymentTarge
 
 ---
 
-## Question 1 — Supabase connection (always)
+## Question 1 — Database choice
 
-> **This is the first setup question.** Always configure Supabase. **Do not** ask how many screens / devices.
+> **This is the first setup question.** **Do not** ask how many screens / devices.
 
-**Preferred on Replit:** open an **input / Secrets** UI where the user pastes the connection string into a field for:
+### Step A — Ask exactly (option order is mandatory)
+
+Present **exactly these three options, in this order** (Supabase first / recommended):
+
+> **Database choice**
+>
+> 1. **Supabase Postgres (Recommended)** — I have a connection string  
+> 2. **Built-in Replit PostgreSQL** — no external account needed  
+> 3. **SQLite** (local file — fine for testing)
+>
+> Which do you want?
+
+**Forbidden option orders / labels:**
+
+- ❌ Putting Built-in Replit PostgreSQL first or marking it “recommended”
+- ❌ Omitting Supabase or SQLite
+- ❌ Asking only for a connection string without showing this choice first (unless `SUPABASE_URL` is already saved and the user is continuing a prior Supabase setup)
+
+**Agent auto-sets after the choice** (never ask the user to type these):
+
+| Choice | Agent sets | User provides |
+|--------|------------|---------------|
+| 1 Supabase | `TOMORROWOS_STORE=supabase`, `DATABASE_SSL=true` | `SUPABASE_URL` (**once**) |
+| 2 Replit PostgreSQL | `TOMORROWOS_STORE=postgres`, `DATABASE_SSL=true` | Use Replit’s built-in **`DATABASE_URL`** (do not ask them to invent a URI) |
+| 3 SQLite | `TOMORROWOS_STORE=sqlite` | Confirmation only |
+
+### Step B1 — If **1 Supabase (Recommended)**
+
+Collect `SUPABASE_URL` **exactly once** (IRON RULE).
+
+| Allowed (pick **one**) | Forbidden |
+|------------------------|-----------|
+| Open the Replit **Secrets** UI for `SUPABASE_URL` **or** ask the user to paste the string in chat | Asking for the connection string again after Secrets was already filled |
+| Save Secret once, then move on | Opening Secrets **and** also asking them to paste the same URI in chat |
+| Reuse the saved Secret in execution | Asking again in Q2 / Q3 / “confirm your Supabase Secret” / Publish / checklist |
+
+If `SUPABASE_URL` is **already** present in Replit Secrets when this branch starts, **do not** ask for it again — confirm you will use the existing Secret and proceed to Question 2 (unless the user explicitly wants to replace it).
+
+**Preferred on Replit:** open an **input / Secrets** UI for:
 
 - `SUPABASE_URL`
 
-**Ask exactly (copy wording; do not substitute LLM_PROMPT questions):**
+**Only if** the Secrets UI is unavailable, ask exactly in chat. **Do not** also open a second Secrets prompt for the same value:
 
-> Paste your Supabase Postgres connection string below. I will store it as the Replit Secret **`SUPABASE_URL`** (not `DATABASE_URL` — that name is often reserved by Replit).
+> Paste your Supabase Postgres connection string below. I will store it as the Replit Secret **`SUPABASE_URL`** (not `DATABASE_URL` — that name is for built-in Replit PostgreSQL).
 >
 > Example shape: `postgresql://postgres.[PROJECT]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres`
 >
-> Also confirm whether SSL is required (usually **yes** for Supabase).
+> SSL is assumed **yes** for Supabase unless you say otherwise.
 
 **You must then:**
 
-1. Create / update Replit Secret: `SUPABASE_URL=<user value>`
-2. Create / update Replit Secret or `.env`:
+1. Create / update Replit Secret: `SUPABASE_URL=<user value>` (**once**).
+2. Set flags yourself (not a second paste of the URI):
    - `TOMORROWOS_STORE=supabase`
-   - `DATABASE_SSL=true` (unless the user explicitly says SSL is off)
-3. Update `server.ts` so the store uses Supabase via `SUPABASE_URL`:
+   - `DATABASE_SSL=true`
+3. Wire `server.ts` with `createTomorrowOSStore({ databaseUrl: process.env.SUPABASE_URL || process.env.DATABASE_URL, sqlitePath: ... })`.
+4. **Do not** write the password into committed files.
+5. **Do not** test the connection — configuration only.
+6. **Do not** proceed to Question 2 until `SUPABASE_URL` is saved (or was already present and reused).
+7. **After this branch completes, never re-request `SUPABASE_URL`.**
+
+### Step B2 — If **2 Built-in Replit PostgreSQL**
+
+1. Ensure Replit’s built-in Postgres is enabled for the Repl (create/attach if the platform UI requires it).
+2. Use the platform-provided **`DATABASE_URL`** Secret — **do not** ask the user to paste a Supabase-style URI.
+3. Set yourself:
+   - `TOMORROWOS_STORE=postgres`
+   - `DATABASE_SSL=true` (unless Replit docs for this DB say otherwise)
+4. Wire `server.ts` with `databaseUrl: process.env.DATABASE_URL || process.env.SUPABASE_URL`.
+5. **Do not** set `TOMORROWOS_STORE=supabase` for this path.
+6. **Do not** ask for `SUPABASE_URL`.
+7. **Do not** test the DB connection in Preview — configuration only.
+8. Proceed to Question 2.
+
+### Step B3 — If **3 SQLite**
+
+1. Set `TOMORROWOS_STORE=sqlite` yourself.
+2. Ensure `data/tomorrowos.db` path via starter / `createTomorrowOSStore({ sqlitePath: join(__dirname, "data", "tomorrowos.db") })`.
+3. Warn briefly: SQLite is fine for testing; pairings may not survive some rebuilds as well as Postgres.
+4. **Do not** ask for any connection string.
+5. Proceed to Question 2.
+
+### Shared `server.ts` shape (all Q1 paths)
 
 ```ts
 import "dotenv/config";
@@ -407,7 +486,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const brand = JSON.parse(readFileSync(join(__dirname, "brand.json"), "utf8"));
 
 const store = createTomorrowOSStore({
-  // Prefer SUPABASE_URL on Replit. Do NOT rely on Replit's reserved DATABASE_URL.
+  // Supabase: SUPABASE_URL. Replit Postgres: DATABASE_URL. SQLite: ignores URL.
   databaseUrl: process.env.SUPABASE_URL || process.env.DATABASE_URL,
   sqlitePath: join(__dirname, "data", "tomorrowos.db")
 });
@@ -420,20 +499,6 @@ tomorrowos.listen({
   staticRoot: join(__dirname, "public")
 });
 ```
-
-4. Ensure `.env` / Secrets include:
-
-```env
-TOMORROWOS_STORE=supabase
-SUPABASE_URL=postgresql://...
-DATABASE_SSL=true
-```
-
-5. **Do not** write the real password into committed files.
-6. **Do not** test the Supabase connection after saving the Secret — **configuration only**. No probe, no `npm run start` just to verify DB, no fixing “connection failure” in dev. Saving `SUPABASE_URL` completes Question 1.
-7. **Do not** proceed to Question 2 until `SUPABASE_URL` is saved.
-
-If the user refuses Supabase, warn that Replit fleets need a durable Postgres store, then offer SQLite only after they explicitly confirm.
 
 **Store in `brand.json` later (Question 3):** `cms.hostingTarget`: `"here"`. Do **not** ask for `expectedScreens`; leave a default (e.g. `5`) when writing `brand.json`.
 
@@ -499,35 +564,45 @@ The SDK auto-detects these env vars and uploads media to Cloudinary. New uploads
 
 ---
 
-## Question 3 — Brand / TomorrowOS app look (`brand.json` only)
+## Question 3 — Brand / TomorrowOS app look (`brand.json` only; **all fields optional**)
 
 > **Scope:** Question 3 answers **only** update **`brand.json`** — colours, name, tagline, logo path, etc. They configure how the **TomorrowOS player app** looks and metadata flags.
 >
 > **Question 3 does NOT affect:** Replit Publish, artifact `kind`, `.replit`, `server.ts`, Secrets, Supabase, Cloudinary, ports, deployment target, or CMS server wiring. **Never** change deploy/runtime config based on branding answers.
+>
+> **Every field below is optional.** The user may skip the whole question, answer only some fields, or say “use defaults”. For anything missing, **keep the existing starter `brand.json` values** (from `templates/cms-starter/brand.json` / project `brand.json` after `init`). **Do not** invent a second branding prompt. **Do not** block setup because name or colours were omitted.
 
 > **This is the only branding / platform / use-case question block.** Do not ask separate LLM_PROMPT “target platform”, “use case”, or “hosting” questions before this. **Do not** ask screen count.
 
-**Ask exactly (one message; user may answer in one reply):**
+**Ask exactly (one message; user may answer in one reply, partially, or skip):**
 
-> Let’s brand your TomorrowOS experience. Please provide:
+> Let’s brand your TomorrowOS experience (**all optional** — reply “skip” or leave blank to keep the starter `brand.json` defaults):
 >
-> 1. **Product / venue name** (shown on screens and the Control Panel)
-> 2. **Tagline** (optional)
-> 3. **Primary colour** (hex, e.g. `#FF8A3D`)
-> 4. **Background colour** (hex, optional — default `#FAFAF9`)
-> 5. **Text colour** (hex, optional — default `#0A0908`)
-> 6. **Secondary / accent colour** (hex, optional)
-> 7. **Logo** — upload an SVG/PNG into the project, or give a URL I can fetch into `./assets/`
+> 1. **Product / venue name** (optional — default from `brand.json`, e.g. `My Venue`)
+> 2. **Tagline** (optional — default e.g. `Digital signage`)
+> 3. **Primary colour** (optional hex — default e.g. `#FF8A3D`)
+> 4. **Background colour** (optional — default e.g. `#FAFAF9`)
+> 5. **Text colour** (optional — default e.g. `#0A0908`)
+> 6. **Secondary / accent colour** (optional — default e.g. `#F5F3EF`)
+> 7. **Logo** (optional) — upload an SVG/PNG, or a URL to fetch into `./assets/` (otherwise keep `./assets/logo.svg`)
 
+**Defaults rule (mandatory):**
 
-If the user only gives a name and primary colour, use defaults for the rest and say what you assumed.
+1. Start from the current project **`brand.json`** (after `init`, this matches the SDK starter).
+2. Overlay **only** fields the user actually provided.
+3. If the user gives **no** product name → keep existing `"name"`.
+4. If the user gives **no** colours → keep existing `primaryColor` / `backgroundColor` / `textColor` / `secondaryColor`.
+5. If the user says **skip** / **defaults** / **n/a** / sends an empty answer → leave `brand.json` unchanged (except set `cms.hostingTarget` to `"here"` if needed — see below).
+6. **Never** re-ask for missing branding fields. **Never** treat blank name/colour as an error.
 
-**Then write / update `brand.json` only** at the project root (validate mentally against `brand.schema.json` in the SDK). **Do not** modify `.replit`, `server.ts`, Secrets, or deployment settings from these answers. Minimum example:
+**Then write / update `brand.json` only** at the project root (validate mentally against `brand.schema.json` in the SDK). **Do not** modify `.replit`, `server.ts`, Secrets, or deployment settings from these answers.
+
+Example when the user provided only a name (other fields kept from starter):
 
 ```json
 {
-  "name": "<user name>",
-  "tagline": "<user tagline or Digital signage>",
+  "name": "<user name or keep starter name>",
+  "tagline": "Digital signage",
   "targetPlatforms": ["tizen"],
   "primaryColor": "#FF8A3D",
   "secondaryColor": "#F5F3EF",
@@ -575,12 +650,30 @@ If `init` is inappropriate (existing customised project), merge carefully:
 
 ### B. Apply store + media Secrets
 
-**Supabase (always from Question 1):**
+Apply **only** the path chosen in Question 1 — do not re-ask.
+
+**If Q1 = Supabase (reuse; do not ask again):**
 
 ```env
 TOMORROWOS_STORE=supabase
-SUPABASE_URL=...
 DATABASE_SSL=true
+```
+
+Use the **`SUPABASE_URL` already saved**. **Do not** prompt to paste it again.
+
+**If Q1 = Built-in Replit PostgreSQL:**
+
+```env
+TOMORROWOS_STORE=postgres
+DATABASE_SSL=true
+```
+
+Use Replit’s **`DATABASE_URL`**. **Do not** ask for `SUPABASE_URL`.
+
+**If Q1 = SQLite:**
+
+```env
+TOMORROWOS_STORE=sqlite
 ```
 
 **Cloudinary (if chosen):**
@@ -594,7 +687,7 @@ CLOUDINARY_API_SECRET=...
 ### C. Wire `server.ts`
 
 - Always: `host: "0.0.0.0"`, `port: Number(process.env.PORT) || 3000`, `staticRoot: public`
-- Supabase path: pass `databaseUrl: process.env.SUPABASE_URL || process.env.DATABASE_URL` into `createTomorrowOSStore`
+- Store: `createTomorrowOSStore({ databaseUrl: process.env.SUPABASE_URL || process.env.DATABASE_URL, sqlitePath: ... })` — driver comes from `TOMORROWOS_STORE`
 - Keep TomorrowOS event handlers from the starter (paired / online policy push)
 
 ### D. Runtime files for Replit publish
@@ -659,6 +752,9 @@ Do **not**:
 - Replace `@tomorrowos/sdk` with a hand-rolled server
 - Change the production start command away from `tsx server.ts` / `npm run start`
 - Point Supabase at Replit’s reserved `DATABASE_URL` when `SUPABASE_URL` should be used
+- List Q1 databases with **Replit PostgreSQL first** or mark it recommended instead of Supabase
+- **Ask for `SUPABASE_URL` / the Postgres connection string more than once** (Secrets UI + chat, or again during execution / Publish)
+- Ask the user to type `TOMORROWOS_STORE` or `DATABASE_SSL`
 - Skip Cloudinary recommendation without stating the persistence tradeoff
 - **Skip Cloudinary Secrets** after the user chooses Cloudinary — always collect `CLOUDINARY_*` inside Question 2 before Question 3
 - **Announce “Question 2b”** or a separate follow-up question — show the Secrets form immediately instead
@@ -669,14 +765,16 @@ Do **not**:
 - Create the Repl as **API-only** or publish with **Static Deployment** only
 - Set or leave artifact **`kind = "api"`** for the TomorrowOS CMS
 - Change `.replit`, `server.ts`, Secrets, or deployment config based on **Question 3** branding answers (those go in **`brand.json` only**)
+- **Require** product name, colours, or logo in Question 3 — all branding fields are optional; missing → starter `brand.json` defaults
+- **Re-ask** Question 3 for blank name/colour instead of keeping defaults
 - Omit `[[ports]]` / `deploymentTarget` from `.replit` when setting up for Publish
-- Run **Supabase connection tests**, **WebSocket console tests**, or other post-setup smoke tests unless Preview fails or the user asks
+- Run **database connection tests**, **WebSocket console tests**, or other post-setup smoke tests unless Preview fails or the user asks
 - **Debug or “fix” Supabase** because dev logs show `getaddrinfo ENOTFOUND` or `database connection failure` — save config and finish setup instead
-- Ask how many screens / devices (≤5 vs >5) — always start with Supabase
+- Ask how many screens / devices (≤5 vs >5)
 
 ---
 
-## SQLite fallback — `server.ts` reference (only if user refuses Supabase)
+## SQLite path — `server.ts` reference (Q1 option 3)
 
 ```ts
 const store = createTomorrowOSStore({
@@ -712,7 +810,11 @@ TOMORROWOS_STORE=sqlite
 
 ## Protocol version
 
-`replit-setup/1.8` — aligned with TomorrowOS protocol `1.0` and `@tomorrowos/sdk` store drivers `sqlite` | `supabase` | `postgres` | `memory`.
+`replit-setup/1.10` — aligned with TomorrowOS protocol `1.0` and `@tomorrowos/sdk` store drivers `sqlite` | `supabase` | `postgres` | `memory`.
+
+**Changelog 1.10:** Question 1 is a **database choice** with fixed order: **1) Supabase (Recommended) → 2) Built-in Replit PostgreSQL → 3) SQLite**. Supabase still collects `SUPABASE_URL` once only.
+
+**Changelog 1.9:** Question 1 collects `SUPABASE_URL` **once only** (no second Secrets/chat prompt in execution). Question 3 branding fields are **all optional**; missing values keep starter `brand.json` defaults.
 
 **Changelog 1.8:** Question 1 is always Supabase connection string (input / Secret). Removed screen-count branching (≤5 SQLite vs >5 Supabase). Media storage is Question 2; branding is Question 3.
 
