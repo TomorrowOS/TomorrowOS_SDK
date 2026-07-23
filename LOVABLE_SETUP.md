@@ -12,21 +12,21 @@ When a human pastes a prompt like this, **read this file and start Question 1 im
 ```text
 Follow @tomorrowos/sdk LOVABLE_SETUP.md and set up my TomorrowOS CMS.
 Ask only the questions listed in LOVABLE_SETUP.md, in order. Do not use LLM_PROMPT.md.
-Do not build a Vite/React mock of TomorrowOS �?use @tomorrowos/sdk cms-starter (Node + WebSocket).
+Do not build a Vite/React mock of TomorrowOS 閳?use @tomorrowos/sdk cms-starter (Node + WebSocket).
 Question 3 only updates brand.json.
-After setup questions (including Cloudinary Secrets if chosen), configure and deploy �?minimal verification only.
-Never test Supabase connection �?save SUPABASE_URL and move on. No Supabase or WebSocket tests.
+After setup questions (including Cloudinary Secrets if chosen), configure and deploy 閳?minimal verification only.
+Never test Supabase connection 閳?save SUPABASE_URL and move on. No Supabase or WebSocket tests.
 Do not skip steps.
 ```
 
 Alternate triggers that also activate this protocol:
 
-- “Set up TomorrowOS on Lovable using LOVABLE_SETUP.md�?
-- “Configure my TomorrowOS CMS (Lovable wizard)�?
+- 閳ユ藩et up TomorrowOS on Lovable using LOVABLE_SETUP.md閳?
+- 閳ユ窅onfigure my TomorrowOS CMS (Lovable wizard)閳?
 
 When any of these triggers fire, **ignore `LLM_PROMPT.md` entirely** for the Q&A phase.
 
-**Before Question 1:** read **IRON RULE: real Node CMS only** below. If the project is already a default Lovable Vite + React app with no `@tomorrowos/sdk` server, **do not** keep building that as the TV CMS �?seed or replace with the SDK `cms-starter` layout first.
+**Before Question 1:** read **IRON RULE: real Node CMS only** below. If the project is already a default Lovable Vite + React app with no `@tomorrowos/sdk` server, **do not** keep building that as the TV CMS 閳?seed or replace with the SDK `cms-starter` layout first.
 
 ---
 
@@ -41,78 +41,78 @@ TomorrowOS CMS needs a **Node.js process** that:
 - serves the Control Panel at **`GET /`**
 - keeps **WebSocket** connections open for Tizen / BrightSign players
 
-Lovable’s default app is **Vite + React + Lovable Cloud** (Postgres / Auth / Storage / Edge Functions). That stack **cannot** replace `@tomorrowos/sdk`’s long-lived WebSocket CMS by itself.
+Lovable閳ユ獨 default app is **Vite + React + Lovable Cloud** (Postgres / Auth / Storage / Edge Functions). That stack **cannot** replace `@tomorrowos/sdk`閳ユ獨 long-lived WebSocket CMS by itself.
 
 | Required | Forbidden |
 |----------|-----------|
 | Project seeded from **`npx @tomorrowos/sdk init`** (or `templates/cms-starter`) | Rebuilding pairing / WebSocket / `setPolicy` in React or Edge Functions |
-| Live Node entry: `npm run start` �?`tsx server.ts` | Claiming Lovable Cloud **Publish** alone is the TV CMS endpoint |
-| Control Panel HTML at `/` via `staticRoot: public` | Vite-only SPA that “looks like�?a CMS but has no TomorrowOS server |
+| Live Node entry: `npm run start` 閳?`tsx server.ts` | Claiming Lovable Cloud **Publish** alone is the TV CMS endpoint |
+| Control Panel HTML at `/` via `staticRoot: public` | Vite-only SPA that 閳ユ笓ooks like閳?a CMS but has no TomorrowOS server |
 | Durable DB via Supabase / Lovable Cloud Postgres URL | Inventing a hand-rolled store protocol |
 
 ### How Publish works on Lovable (read carefully)
 
-1. **Lovable Agent** = wizard + editor (ask Q1–Q3, write Secrets / `brand.json` / `server.ts`).
+1. **Lovable Agent** = wizard + editor (ask Q1閳ユ彌3, write Secrets / `brand.json` / `server.ts`).
 2. **GitHub sync** = required so the Node CMS can be hosted where Node + WebSocket work.
 3. **TV-facing CMS host** (pick one; do not invent a fourth):
-   - **Railway** (recommended companion) �?long-lived Node, `npm run start`
-   - **Render / Fly.io** �?same pattern as Railway
-   - **Vercel Fluid** �?only if following **`VERCEL_SETUP.md`** / `cms-starter-v0` (do not mix Replit-style root `server.ts` with broken Vercel static deploy)
+   - **Railway** (recommended companion) 閳?long-lived Node, `npm run start`
+   - **Render / Fly.io** 閳?same pattern as Railway
+   - **Vercel Fluid** 閳?only if following **`VERCEL_SETUP.md`** / `cms-starter-v0` (do not mix Replit-style root `server.ts` with broken Vercel static deploy)
 
-**Do not tell the user “Publish on Lovable Cloud�?is done** unless the **Node CMS URL** (Railway / Render / Fly / Vercel Fluid) is live and serves the Control Panel at `/`.
+**Do not tell the user 閳ユ阀ublish on Lovable Cloud閳?is done** unless the **Node CMS URL** (Railway / Render / Fly / Vercel Fluid) is live and serves the Control Panel at `/`.
 
 Lovable Cloud remains useful for:
 
 - **Secrets** UI
-- **Postgres** (same family as Supabase �?use as `SUPABASE_URL` / database URL)
-- **Lovable Cloud Storage** (Object Storage replacement �?see Question 2)
+- **Postgres** (same family as Supabase 閳?use as `SUPABASE_URL` / database URL)
+- **Lovable Cloud Storage** (Object Storage replacement 閳?see Question 2)
 
 ---
 
-## Questionnaire scope (STRICT �?read before asking anything)
+## Questionnaire scope (STRICT 閳?read before asking anything)
 
 Lovable Agent must ask **only** the questions defined in **this file**, in **this exact order**:
 
 | Step | Section | When |
 |------|---------|------|
-| 1 | **Question 1** �?Supabase / Lovable Cloud Postgres connection string | Always |
-| 2 | **Question 2** �?Media storage (+ Cloudinary Secrets if chosen) | Always (after Q1) |
-| 3 | **Question 3** �?Brand / TomorrowOS app look | Always last, before execution |
+| 1 | **Question 1** 閳?Supabase / Lovable Cloud Postgres connection string | Always |
+| 2 | **Question 2** 閳?Media storage (+ Cloudinary Secrets if chosen) | Always (after Q1) |
+| 3 | **Question 3** 閳?Brand / TomorrowOS app look | Always last, before execution |
 
-**That is the complete list.** There are no other setup questions. **Do not** ask how many screens / devices. There is **no** “Question 2b�?�?Cloudinary credentials are collected **inside Question 2**, immediately after the user chooses Cloudinary.
+**That is the complete list.** There are no other setup questions. **Do not** ask how many screens / devices. There is **no** 閳ユ法uestion 2b閳?閳?Cloudinary credentials are collected **inside Question 2**, immediately after the user chooses Cloudinary.
 
-**Critical:** Question 2 is **not complete** when the user says “Cloudinary�?or “yes�? You **must** immediately collect `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` **before** Question 3. Do **not** skip to branding with placeholder or invented credentials.
+**Critical:** Question 2 is **not complete** when the user says 閳ユ窅loudinary閳?or 閳ユ脯es閳? You **must** immediately collect `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` **before** Question 3. Do **not** skip to branding with placeholder or invented credentials.
 
-If the user volunteers extra info early (e.g. brand name before Q3), **record it** and still ask the current question’s required fields you do not yet have. Do not skip ahead to execution until Q1–Q3 are complete (Question 2 includes Cloudinary Secrets when applicable).
+If the user volunteers extra info early (e.g. brand name before Q3), **record it** and still ask the current question閳ユ獨 required fields you do not yet have. Do not skip ahead to execution until Q1閳ユ彌3 are complete (Question 2 includes Cloudinary Secrets when applicable).
 
-If the user says “just set it up, don’t ask questions,�?respond:
+If the user says 閳ユ笍ust set it up, don閳ユ獩 ask questions,閳?respond:
 
-> I need a few quick answers from LOVABLE_SETUP.md (Postgres connection string, media storage �?plus Cloudinary credentials if you choose Cloudinary �?and branding). It takes about a minute and ensures the CMS deploys correctly with Lovable + a Node host.
+> I need a few quick answers from LOVABLE_SETUP.md (Postgres connection string, media storage 閳?plus Cloudinary credentials if you choose Cloudinary 閳?and branding). It takes about a minute and ensures the CMS deploys correctly with Lovable + a Node host.
 
-Then ask **Question 1** �?do not switch to `LLM_PROMPT.md`.
+Then ask **Question 1** 閳?do not switch to `LLM_PROMPT.md`.
 
 ---
 
 ## Hard rules
 
-1. **Ask only LOVABLE_SETUP.md questions 1�?.** Never use `LLM_PROMPT.md` on Lovable for this wizard.
-2. **One question at a time.** Wait for the user’s answer before asking the next (unless they already answered several in one message). **Exception:** If the user chooses Cloudinary in Question 2, **stay on Question 2** and immediately collect Cloudinary Secrets �?do **not** announce a separate �?b�?
+1. **Ask only LOVABLE_SETUP.md questions 1閳?.** Never use `LLM_PROMPT.md` on Lovable for this wizard.
+2. **One question at a time.** Wait for the user閳ユ獨 answer before asking the next (unless they already answered several in one message). **Exception:** If the user chooses Cloudinary in Question 2, **stay on Question 2** and immediately collect Cloudinary Secrets 閳?do **not** announce a separate 閳?b閳?
 3. **Do not invent** Cloudinary credentials, database URLs, or brand colours. **Do not ask** screen / device count.
 4. **Prefer `SUPABASE_URL`** for the Postgres connection string Secret name (same as Replit). Lovable Cloud / linked Supabase both work. Do not commit passwords into git.
 5. **Prefer `npx @tomorrowos/sdk init`** (or copy `templates/cms-starter`) as the project seed. Do not rebuild pairing, WebSocket, or playlist APIs from scratch.
-6. **Never commit secrets.** Put credentials in Lovable **Cloud �?Secrets** (and the Node host’s env vars: Railway / Render / Fly / Vercel).
-7. After Q&A, **configure and deploy** �?do **not** run a long test suite (see **Post-Q&A: minimal verification only**).
-8. **Supabase / Lovable Postgres: configure only �?never test.** Save `SUPABASE_URL` + `TOMORROWOS_STORE=supabase` and proceed. Do not ping Postgres or treat preview DB errors as a failed setup.
+6. **Never commit secrets.** Put credentials in Lovable **Cloud 閳?Secrets** (and the Node host閳ユ獨 env vars: Railway / Render / Fly / Vercel).
+7. After Q&A, **configure and deploy** 閳?do **not** run a long test suite (see **Post-Q&A: minimal verification only**).
+8. **Supabase / Lovable Postgres: configure only 閳?never test.** Save `SUPABASE_URL` + `TOMORROWOS_STORE=supabase` and proceed. Do not ping Postgres or treat preview DB errors as a failed setup.
 9. **Do not** replace `@tomorrowos/sdk` with Edge Functions, React state, or a fake WebSocket.
 10. **Media durability:** Lovable has **no Replit Object Storage mount** on a local `public/uploads` disk. Use **Cloudinary** or **Lovable Cloud Storage** (see Question 2). Plain local `public/uploads` is ephemeral on most Node hosts unless a volume is attached.
 
 **Question order (always):**
 
-- Q1 �?Q2 �?Q3 �?execution checklist
+- Q1 閳?Q2 閳?Q3 閳?execution checklist
 
 ---
 
-## Question 1 �?Supabase / Lovable Cloud Postgres (always)
+## Question 1 閳?Supabase / Lovable Cloud Postgres (always)
 
 > **This is the first setup question.** Always configure durable Postgres. **Do not** ask how many screens / devices.
 
@@ -122,7 +122,7 @@ Then ask **Question 1** �?do not switch to `LLM_PROMPT.md`.
 >
 > Example shape: `postgresql://postgres.[PROJECT]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres`
 >
-> If you use **Lovable Cloud**, open **Cloud �?Database** (or project connection settings) and copy the Postgres URI. Also confirm SSL (usually **yes**).
+> If you use **Lovable Cloud**, open **Cloud 閳?Database** (or project connection settings) and copy the Postgres URI. Also confirm SSL (usually **yes**).
 
 **You must then:**
 
@@ -130,7 +130,7 @@ Then ask **Question 1** �?do not switch to `LLM_PROMPT.md`.
 2. Save also:
    - `TOMORROWOS_STORE=supabase`
    - `DATABASE_SSL=true` (unless the user explicitly says SSL is off)
-3. Mirror the same env vars on the **Node host** (Railway / Render / Fly / Vercel) �?Lovable Secrets alone do not reach a Railway process.
+3. Mirror the same env vars on the **Node host** (Railway / Render / Fly / Vercel) 閳?Lovable Secrets alone do not reach a Railway process.
 4. Wire `server.ts` like the Replit starter:
 
 ```ts
@@ -158,7 +158,7 @@ tomorrowos.listen({
 ```
 
 5. **Do not** write the real password into committed files.
-6. **Do not** test the database connection after saving �?configuration only.
+6. **Do not** test the database connection after saving 閳?configuration only.
 7. **Do not** proceed to Question 2 until `SUPABASE_URL` is saved.
 
 If the user refuses Postgres, warn that fleets need a durable store, then offer SQLite only after they explicitly confirm (SQLite is a poor fit on ephemeral Lovable/Railway disks).
@@ -167,27 +167,27 @@ If the user refuses Postgres, warn that fleets need a durable store, then offer 
 
 ---
 
-## Question 2 �?Media storage (uploads / thumbnails)
+## Question 2 閳?Media storage (uploads / thumbnails)
 
-### Step A �?Ask storage choice
+### Step A 閳?Ask storage choice
 
 **Ask exactly:**
 
 > How should playlist media (images/videos) be stored?
 >
-> **Recommended: Cloudinary** �?public HTTPS URLs; `@tomorrowos/sdk` auto-detects `CLOUDINARY_*` Secrets and `/media/upload` works out of the box.
+> **Recommended: Cloudinary** 閳?public HTTPS URLs; `@tomorrowos/sdk` auto-detects `CLOUDINARY_*` Secrets and `/media/upload` works out of the box.
 >
 > Alternatives:
-> - **Lovable Cloud Storage** (replaces Replit Object Storage) �?public Storage bucket on Lovable Cloud / Supabase Storage; durable HTTPS URLs for players.
-> - **Local disk only** �?`public/uploads` on the Node host (fine for quick tests; files may disappear on redeploy without a volume).
+> - **Lovable Cloud Storage** (replaces Replit Object Storage) 閳?public Storage bucket on Lovable Cloud / Supabase Storage; durable HTTPS URLs for players.
+> - **Local disk only** 閳?`public/uploads` on the Node host (fine for quick tests; files may disappear on redeploy without a volume).
 >
-> Do you want me to set up **Cloudinary**? (yes / no �?if no, say whether you want **Lovable Cloud Storage** or local only)
+> Do you want me to set up **Cloudinary**? (yes / no 閳?if no, say whether you want **Lovable Cloud Storage** or local only)
 
-### Step B �?If YES / Cloudinary (same Question 2 �?no �?b�?
+### Step B 閳?If YES / Cloudinary (same Question 2 閳?no 閳?b閳?
 
 **Do this immediately** when the user chooses Cloudinary. **Go straight to collecting Secrets.**
 
-**Preferred:** Lovable **Cloud �?Secrets** fields for:
+**Preferred:** Lovable **Cloud 閳?Secrets** fields for:
 
 - `CLOUDINARY_CLOUD_NAME`
 - `CLOUDINARY_API_KEY`
@@ -196,7 +196,7 @@ If the user refuses Postgres, warn that fleets need a durable store, then offer 
 
 **If Secrets UI is unavailable, ask exactly:**
 
-> Paste your Cloudinary credentials (from [cloudinary.com/console](https://cloudinary.com/console) �?Dashboard �?**API Keys**). I will store them as Secrets:
+> Paste your Cloudinary credentials (from [cloudinary.com/console](https://cloudinary.com/console) 閳?Dashboard 閳?**API Keys**). I will store them as Secrets:
 >
 > 1. **`CLOUDINARY_CLOUD_NAME`**
 > 2. **`CLOUDINARY_API_KEY`**
@@ -209,20 +209,20 @@ If the user refuses Postgres, warn that fleets need a durable store, then offer 
 1. Save those Secrets in Lovable **and** on the Node host.
 2. **Do not** invent or placeholder credentials.
 3. **Do not** proceed to Question 3 until all three required Secrets exist.
-4. **Do not** run a Cloudinary upload test �?configuration only.
+4. **Do not** run a Cloudinary upload test 閳?configuration only.
 
 The SDK auto-detects these env vars; new uploads return `https://res.cloudinary.com/...` URLs.
 
-### If NO �?Lovable Cloud Storage (Object Storage replacement)
+### If NO 閳?Lovable Cloud Storage (Object Storage replacement)
 
 This is the Lovable equivalent of **Replit Object Storage**: durable files with public HTTPS URLs, not an ephemeral disk folder.
 
 **Do this:**
 
-1. Open / use **Cloud �?Storage**.
+1. Open / use **Cloud 閳?Storage**.
 2. Create a **public** bucket named **`tomorrowos-uploads`** (or confirm it exists). Public read is required so Tizen / BrightSign players can fetch media by URL.
 3. Save Secrets (Lovable + Node host) as needed for Storage access used by your upload path, typically:
-   - `SUPABASE_URL` (already from Q1 �?API URL form may differ from Postgres URI; if the project exposes a separate API URL, store it as `SUPABASE_API_URL` only when required)
+   - `SUPABASE_URL` (already from Q1 閳?API URL form may differ from Postgres URI; if the project exposes a separate API URL, store it as `SUPABASE_API_URL` only when required)
    - Service role or upload-capable key **only in server-side Secrets**, never in client bundles
 4. Tell the user clearly:
    - Playlist items must use **absolute `https://...` Storage (or Cloudinary) URLs**.
@@ -231,7 +231,7 @@ This is the Lovable equivalent of **Replit Object Storage**: durable files with 
 5. **Do not** claim that `public/uploads` on Lovable is durable like Replit Object Storage.
 6. **Do not** invent Cloudinary credentials.
 
-### If NO �?local disk only
+### If NO 閳?local disk only
 
 1. Ensure `public/uploads` exists on the Node host (`mkdir -p public/uploads`).
 2. Warn: redeploys may wipe files unless the host has a persistent volume.
@@ -239,22 +239,22 @@ This is the Lovable equivalent of **Replit Object Storage**: durable files with 
 
 ---
 
-## Question 3 �?Brand / TomorrowOS app look (`brand.json` only)
+## Question 3 閳?Brand / TomorrowOS app look (`brand.json` only)
 
 > **Scope:** Question 3 answers **only** update **`brand.json`**.  
 > **Do not** change deploy host, Secrets, or `server.ts` from branding answers.
 
 **Ask exactly (one message; user may answer in one reply):**
 
-> Let’s brand your TomorrowOS experience. Please provide:
+> Let閳ユ獨 brand your TomorrowOS experience. Please provide:
 >
 > 1. **Product / venue name** (shown on screens and the Control Panel)
 > 2. **Tagline** (optional)
 > 3. **Primary colour** (hex, e.g. `#FF8A3D`)
-> 4. **Background colour** (hex, optional �?default `#FAFAF9`)
-> 5. **Text colour** (hex, optional �?default `#0A0908`)
+> 4. **Background colour** (hex, optional 閳?default `#FAFAF9`)
+> 5. **Text colour** (hex, optional 閳?default `#0A0908`)
 > 6. **Secondary / accent colour** (hex, optional)
-> 7. **Logo** �?upload an SVG/PNG into the project, or give a URL I can fetch into `./assets/`
+> 7. **Logo** 閳?upload an SVG/PNG into the project, or give a URL I can fetch into `./assets/`
 
 If the user only gives a name and primary colour, use defaults for the rest and say what you assumed.
 
@@ -288,11 +288,11 @@ If the user only gives a name and primary colour, use defaults for the rest and 
 
 - Default `cms.hostingTarget` to `"self-hosted"` for Railway / Render / Fly.
 - Use `"vercel"` only when following the Vercel Fluid path.
-- Set `cmsEndpoint` only if the user already knows the public `wss://…` URL; otherwise leave it out and tell them to point players at the published HTTPS CMS URL (player converts `https://` �?`wss://`).
+- Set `cmsEndpoint` only if the user already knows the public `wss://閳ヮ泦 URL; otherwise leave it out and tell them to point players at the published HTTPS CMS URL (player converts `https://` 閳?`wss://`).
 
 ---
 
-## After all answers �?execution checklist
+## After all answers 閳?execution checklist
 
 ### A. Seed the TomorrowOS CMS (not a Lovable React mock)
 
@@ -347,7 +347,7 @@ Copy the same keys to the **Node host** env.
     "start": "tsx server.ts"
   },
   "dependencies": {
-    "@tomorrowos/sdk": "^0.9.41",
+    "@tomorrowos/sdk": "^0.9.50",
     "dotenv": "^17.2.3",
     "tsx": "^4.19.0"
   }
@@ -362,10 +362,10 @@ Copy the same keys to the **Node host** env.
 1. Enable **GitHub sync** from Lovable (or push the cms-starter repo).
 2. Create a **Railway** (or Render / Fly) service from that repo.
 3. Set Start Command: `npm run start`
-4. Paste Secrets from Q1–Q2 into the host.
+4. Paste Secrets from Q1閳ユ彌2 into the host.
 5. Deploy and open the public HTTPS URL.
 
-**If the user insists on Vercel:** stop using this Railway-oriented finish path and follow **`VERCEL_SETUP.md`** (`npx tomorrowos init --hosting v0`) instead �?do not half-migrate.
+**If the user insists on Vercel:** stop using this Railway-oriented finish path and follow **`VERCEL_SETUP.md`** (`npx tomorrowos init --hosting v0`) instead 閳?do not half-migrate.
 
 ### F. Minimal verification only
 
@@ -390,21 +390,21 @@ Copy the same keys to the **Node host** env.
 
 1. Confirm real **`@tomorrowos/sdk`** server (not a React mock).
 2. Write Secrets / `.env` / `brand.json` / `server.ts` from answers.
-3. Deploy Node host �?Preview Control Panel at `/`.
+3. Deploy Node host 閳?Preview Control Panel at `/`.
 
 ### Do NOT run after setup (unless user asks or deploy fails)
 
-- �?Supabase connection test
-- �?Cloudinary upload test
-- �?Formal WebSocket console gates
-- �?Long troubleshooting when `/` already shows the Control Panel
+- 閴?Supabase connection test
+- 閴?Cloudinary upload test
+- 閴?Formal WebSocket console gates
+- 閴?Long troubleshooting when `/` already shows the Control Panel
 
 ---
 
 ## What not to ask / change
 
-- **`LLM_PROMPT.md`** �?not used for this Lovable wizard
-- Standalone screen-count / platform / hosting questionnaires outside Q1–Q3
+- **`LLM_PROMPT.md`** 閳?not used for this Lovable wizard
+- Standalone screen-count / platform / hosting questionnaires outside Q1閳ユ彌3
 - Replacing `@tomorrowos/sdk` with Edge Functions or React
 - Saying **Lovable Cloud Publish** alone is enough for TVs
 - Treating **Lovable Cloud Storage** as automatic `public/uploads` persistence (it is **not** a disk mount like Replit Object Storage)
@@ -413,7 +413,7 @@ Copy the same keys to the **Node host** env.
 
 ---
 
-## SQLite fallback �?only if user refuses Postgres
+## SQLite fallback 閳?only if user refuses Postgres
 
 ```ts
 const store = createTomorrowOSStore({
@@ -433,8 +433,8 @@ Warn that SQLite on ephemeral hosts loses pairings on redeploy.
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| “CMS�?is a React app with no pairing | Agent built a Lovable mock | Re-seed with `npx @tomorrowos/sdk init`; deploy Node host |
-| Lovable Publish URL does not pair TVs | Expected �?no WebSocket CMS there | Deploy Railway / Render / Fly / Vercel Fluid; use that URL |
+| 閳ユ窅MS閳?is a React app with no pairing | Agent built a Lovable mock | Re-seed with `npx @tomorrowos/sdk init`; deploy Node host |
+| Lovable Publish URL does not pair TVs | Expected 閳?no WebSocket CMS there | Deploy Railway / Render / Fly / Vercel Fluid; use that URL |
 | `tsx: not found` on host | `tsx` only in devDependencies | Move `tsx` to `dependencies` |
 | Uploads vanish after redeploy | Local `public/uploads` | Cloudinary or Lovable Cloud Storage public URLs |
 | Storage files 403 on player | Private bucket | Make `tomorrowos-uploads` **public** read |
@@ -443,11 +443,11 @@ Warn that SQLite on ephemeral hosts loses pairings on redeploy.
 
 ---
 
-## Replit �?Lovable mapping (for Agents)
+## Replit 閳?Lovable mapping (for Agents)
 
 | Replit | Lovable |
 |--------|---------|
-| Replit Secrets | Lovable **Cloud �?Secrets** (+ copy to Node host) |
+| Replit Secrets | Lovable **Cloud 閳?Secrets** (+ copy to Node host) |
 | Replit Object Storage / `public/uploads` | **Lovable Cloud Storage** public bucket `tomorrowos-uploads` (or Cloudinary) |
 | `.replit` + Autoscale Publish | **GitHub sync + Railway/Render/Fly** `npm run start` (or **VERCEL_SETUP.md**) |
 | Artifact `kind = web` | Real cms-starter Node app with Control Panel at `/` |
@@ -457,6 +457,6 @@ Warn that SQLite on ephemeral hosts loses pairings on redeploy.
 
 ## Protocol version
 
-`lovable-setup/1.0` �?aligned with TomorrowOS protocol `1.0` and `@tomorrowos/sdk` store drivers `sqlite` | `supabase` | `postgres` | `memory`.
+`lovable-setup/1.0` 閳?aligned with TomorrowOS protocol `1.0` and `@tomorrowos/sdk` store drivers `sqlite` | `supabase` | `postgres` | `memory`.
 
-**Changelog 1.0:** Initial Lovable wizard mirroring REPLIT_SETUP Q1–Q3; IRON RULE that Lovable Cloud Publish is not the WebSocket CMS host; Replit Object Storage replaced by Lovable Cloud Storage (+ Cloudinary still recommended for `/media/upload`).
+**Changelog 1.0:** Initial Lovable wizard mirroring REPLIT_SETUP Q1閳ユ彌3; IRON RULE that Lovable Cloud Publish is not the WebSocket CMS host; Replit Object Storage replaced by Lovable Cloud Storage (+ Cloudinary still recommended for `/media/upload`).

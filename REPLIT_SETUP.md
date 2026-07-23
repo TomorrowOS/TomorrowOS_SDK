@@ -14,9 +14,10 @@ Follow @tomorrowos/sdk REPLIT_SETUP.md and set up my TomorrowOS CMS.
 Ask only the questions listed in REPLIT_SETUP.md, in order. Do not use LLM_PROMPT.md.
 Artifact kind must be **web** (never **api**).
 Question 1 database options in this order: 1) Supabase (Recommended) 2) Built-in Replit PostgreSQL 3) SQLite.
-If Supabase: collect SUPABASE_URL once only — never ask for the connection string twice.
-Question 3 branding fields are all optional; missing values keep starter brand.json defaults.
-After all setup questions are answered (including Cloudinary Secrets if you chose Cloudinary), configure and start — minimal verification only (Web app type + Preview at /). **Never test database connection** in Preview — configure and move on. No DB or WebSocket tests.
+If Supabase: show the SUPABASE_URL Secrets input immediately after the choice (same Question 1 — once only).
+If Cloudinary: show all CLOUDINARY_* Secrets inputs immediately after the choice (same Question 2 — one multi-field dialog).
+Question 3: one multi-field dialog with all seven branding inputs stacked (all optional; blanks keep brand.json defaults). Never ask branding fields one-by-one with Next.
+After all setup questions are answered, configure and start — minimal verification only (Web app type + Preview at /). **Never test database connection** in Preview — configure and move on. No DB or WebSocket tests.
 Do not skip steps.
 ```
 
@@ -67,16 +68,24 @@ Replit Agent must ask **only** the questions defined in **this file**, in **this
 
 **That is the complete list.** There are no other setup questions. **Do not** ask how many screens / devices. There is **no** “Question 2b” — Cloudinary credentials are collected **inside Question 2**, immediately after the user chooses Cloudinary.
 
+**Critical — UI shape (Replit multi-input dialogs):** Prefer Replit’s **Secrets / form UI with multiple input fields in one dialog**. Do **not** run a chat wizard that asks one field, waits, then “Next” for the next field.
+
+| Step | Required UI |
+|------|-------------|
+| Q1 + Supabase | Database choice → **immediately** one Secrets input for `SUPABASE_URL` (still Question 1) |
+| Q2 + Cloudinary | Media choice → **immediately** one multi-field Secrets dialog for all `CLOUDINARY_*` keys (still Question 2) |
+| Q3 branding | **One** multi-field dialog with **all seven** branding inputs stacked (name, tagline, primary, background, text, secondary, logo) |
+
 **Critical — Question 1 option order (exact):** Present database choices in **this order only**:
 1. **Supabase Postgres (Recommended)**
 2. **Built-in Replit PostgreSQL**
 3. **SQLite (local file — fine for testing)**
 
-**Critical — Supabase path collected once only:** If the user picks Supabase, collect `SUPABASE_URL` in **one** step (Secrets UI **or** chat paste — not both). After it is saved, **never** ask for the connection string / `SUPABASE_URL` again (not in Q2, Q3, execution, Publish, or “confirm Secrets”).
+**Critical — Supabase path collected once only:** If the user picks Supabase, collect `SUPABASE_URL` **immediately after the choice**, in **one** step (Secrets UI **or** a single chat paste — not both). After it is saved, **never** ask for the connection string / `SUPABASE_URL` again.
 
-**Critical:** Question 2 is **not complete** when the user says “Cloudinary” or “yes”. You **must** immediately show the Cloudinary Secrets input (same step — do **not** label a new question) and collect `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` **before** Question 3. Do **not** skip to branding with placeholder or invented credentials.
+**Critical:** Question 2 is **not complete** when the user says “Cloudinary” or “yes”. You **must immediately** open the **multi-field** Cloudinary Secrets dialog (same Question 2 — **not** “2b”, **not** one key per message) and collect `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` **before** Question 3.
 
-**Critical — Question 3:** Every branding field is **optional**. Empty / skip / “use defaults” → keep values from the starter **`brand.json`**. Do **not** re-ask for missing name or colours.
+**Critical — Question 3:** All seven branding fields are **optional** and must appear in **one stacked multi-input dialog**. Empty / skip / “use defaults” → keep starter **`brand.json`**. **Never** ask name, then colours, then logo across separate turns.
 
 If the user volunteers extra info early (e.g. brand name before Q3), **record it** and still ask the current question’s required fields you do not yet have. Do not skip ahead to execution until Q1–Q3 are complete (Question 2 includes Cloudinary Secrets when applicable). For Q3, “complete” includes the user skipping or leaving fields blank.
 
@@ -91,10 +100,13 @@ Then ask **Question 1** — do not switch to `LLM_PROMPT.md`.
 ## Hard rules
 
 1. **Ask only REPLIT_SETUP.md questions 1–3** (see **Questionnaire scope**). Never use `LLM_PROMPT.md` on Replit.
-2. **One question at a time.** Wait for the user’s answer before asking the next question (unless they already answered several in one message). **Exception:** If the user chooses Cloudinary in Question 2, **stay on Question 2** and immediately show the Secrets form — do **not** open a separate “2b” step or announce a new question number.
+2. **One questionnaire step at a time (Q1 → Q2 → Q3).** Wait for that step to finish before opening the next. **Inside** a step, use **one multi-field dialog** when collecting Secrets or branding — **never** field-by-field “Next” wizards.
+2a. **Q1 Supabase:** choice → **immediately** `SUPABASE_URL` input (same Question 1).
+2b. **Q2 Cloudinary:** choice → **immediately** multi-field `CLOUDINARY_*` Secrets dialog (same Question 2).
+2c. **Q3:** one dialog, **seven inputs stacked** (all optional).
 3. **Do not invent** Cloudinary credentials, Supabase URLs, or brand colours. **Do not ask** screen / device count.
 4. **Do not use Replit’s reserved `DATABASE_URL` Secret for Supabase.** On Replit, `DATABASE_URL` is often the **built-in Replit PostgreSQL** URL. For Supabase always use **`SUPABASE_URL`**. For built-in Replit Postgres, use **`DATABASE_URL`** with `TOMORROWOS_STORE=postgres`.
-4a. **If Supabase is chosen: never collect `SUPABASE_URL` twice.** One capture after the choice is enough for the whole wizard and execution checklist.
+4a. **If Supabase is chosen: never collect `SUPABASE_URL` twice.** One capture right after the choice is enough.
 4b. **Question 3 fields are all optional.** Missing values → keep starter `brand.json` defaults; do not block or re-prompt.
 4c. **`TOMORROWOS_STORE` + `DATABASE_SSL` are agent-owned.** After the Q1 choice (and URL if needed), set them yourself. Never ask the user to type those names/values.
 5. **Prefer `npx @tomorrowos/sdk init`** (or the package’s `templates/cms-starter`) as the project seed. Do not rebuild pairing, WebSocket, or playlist APIs from scratch.
@@ -108,7 +120,7 @@ Then ask **Question 1** — do not switch to `LLM_PROMPT.md`.
 
 - Q1 → Q2 → Q3 → execution checklist
 
-Never insert extra questions between these steps. When the user chooses Cloudinary, **Question 2 continues** with the Secrets form immediately — then proceed to Q3 only after secrets are saved.
+Never insert extra questions between these steps. When the user chooses Supabase, **Question 1 continues** with the `SUPABASE_URL` Secrets input **immediately**. When the user chooses Cloudinary, **Question 2 continues** with the multi-field Cloudinary Secrets dialog **immediately**.
 
 ---
 
@@ -418,21 +430,24 @@ Present **exactly these three options, in this order** (Supabase first / recomme
 
 ### Step B1 — If **1 Supabase (Recommended)**
 
+**Immediately after the user selects Supabase** (same Question 1 — do **not** go to Q2 first, do **not** announce “next question”): open the Secrets / connection-string input.
+
 Collect `SUPABASE_URL` **exactly once** (IRON RULE).
 
 | Allowed (pick **one**) | Forbidden |
 |------------------------|-----------|
-| Open the Replit **Secrets** UI for `SUPABASE_URL` **or** ask the user to paste the string in chat | Asking for the connection string again after Secrets was already filled |
+| **Immediately** open Replit **Secrets** UI for `SUPABASE_URL` after the choice | Waiting until later / Q2 / execution to ask for the URI |
 | Save Secret once, then move on | Opening Secrets **and** also asking them to paste the same URI in chat |
 | Reuse the saved Secret in execution | Asking again in Q2 / Q3 / “confirm your Supabase Secret” / Publish / checklist |
+| | Asking “Do you still want to add SUPABASE_URL?” as a separate step after they already chose Supabase |
 
 If `SUPABASE_URL` is **already** present in Replit Secrets when this branch starts, **do not** ask for it again — confirm you will use the existing Secret and proceed to Question 2 (unless the user explicitly wants to replace it).
 
-**Preferred on Replit:** open an **input / Secrets** UI for:
+**Preferred on Replit (same Question 1 turn after choice):** open an **input / Secrets** UI for:
 
 - `SUPABASE_URL`
 
-**Only if** the Secrets UI is unavailable, ask exactly in chat. **Do not** also open a second Secrets prompt for the same value:
+**Only if** the Secrets UI is unavailable, ask exactly in chat **in the very next message after the choice**. **Do not** also open a second Secrets prompt for the same value:
 
 > Paste your Supabase Postgres connection string below. I will store it as the Replit Secret **`SUPABASE_URL`** (not `DATABASE_URL` — that name is for built-in Replit PostgreSQL).
 >
@@ -520,26 +535,32 @@ tomorrowos.listen({
 >
 > Do you want me to set up **Cloudinary**? (yes / no)
 
-### Step B — If YES / Cloudinary (same Question 2 — no “2b”, no extra question)
+### Step B — If YES / Cloudinary (same Question 2 — immediate multi-field Secrets dialog)
 
-**Do this immediately** when the user chooses Cloudinary. **Do not** say “Question 2b”, “next step”, or “Great — I’ll use Cloudinary” as a separate message before the form. **Go straight to the Secrets input.**
+**Do this in the same Question 2 flow, immediately when the user chooses Cloudinary.**
 
-**Preferred on Replit:** open the **Replit Secrets** UI with fields for:
+- ❌ Do **not** say “Question 2b”, “next step”, or “Great — I’ll use Cloudinary” as a separate message before the form  
+- ❌ Do **not** ask for cloud name, then API key, then secret across three turns  
+- ✅ **Go straight to one Secrets / form dialog with multiple inputs stacked**
+
+**Preferred on Replit:** open the **Replit Secrets** UI **immediately** with **all** of these fields in **one** dialog:
 
 - `CLOUDINARY_CLOUD_NAME`
 - `CLOUDINARY_API_KEY`
 - `CLOUDINARY_API_SECRET`
 - Optional: `CLOUDINARY_FOLDER` (e.g. `tomorrowos`)
 
-**If Secrets UI is unavailable, ask exactly (one message with all fields):**
+**If Secrets UI is unavailable, ask exactly once (one message — all fields listed together; user may paste all in one reply):**
 
-> Paste your Cloudinary credentials (from [cloudinary.com/console](https://cloudinary.com/console) → Dashboard → **API Keys**). I will store them as Replit **Secrets**:
+> Paste your Cloudinary credentials (from [cloudinary.com/console](https://cloudinary.com/console) → Dashboard → **API Keys**). I will store them as Replit **Secrets** in one go:
 >
 > 1. **`CLOUDINARY_CLOUD_NAME`**
 > 2. **`CLOUDINARY_API_KEY`**
 > 3. **`CLOUDINARY_API_SECRET`**
 >
 > Optional: **`CLOUDINARY_FOLDER`**
+>
+> You can send all values in a single reply.
 
 **You must then:**
 
@@ -564,36 +585,60 @@ The SDK auto-detects these env vars and uploads media to Cloudinary. New uploads
 
 ---
 
-## Question 3 — Brand / TomorrowOS app look (`brand.json` only; **all fields optional**)
+## Question 3 — Brand / TomorrowOS app look (`brand.json` only; **one multi-field dialog**)
 
-> **Scope:** Question 3 answers **only** update **`brand.json`** — colours, name, tagline, logo path, etc. They configure how the **TomorrowOS player app** looks and metadata flags.
+> **Scope:** Question 3 answers **only** update **`brand.json`**.  
+> **Question 3 does NOT affect:** Replit Publish, artifact `kind`, `.replit`, `server.ts`, Secrets, Supabase, Cloudinary, ports, deployment target, or CMS server wiring.
 >
-> **Question 3 does NOT affect:** Replit Publish, artifact `kind`, `.replit`, `server.ts`, Secrets, Supabase, Cloudinary, ports, deployment target, or CMS server wiring. **Never** change deploy/runtime config based on branding answers.
+> **IRON RULE — one dialog, seven stacked inputs:** Present **all seven** branding fields in a **single** Replit form / multi-input dialog (or one chat message that lists all seven for one reply). The user fills what they want and submits **once**.
 >
-> **Every field below is optional.** The user may skip the whole question, answer only some fields, or say “use defaults”. For anything missing, **keep the existing starter `brand.json` values** (from `templates/cms-starter/brand.json` / project `brand.json` after `init`). **Do not** invent a second branding prompt. **Do not** block setup because name or colours were omitted.
-
-> **This is the only branding / platform / use-case question block.** Do not ask separate LLM_PROMPT “target platform”, “use case”, or “hosting” questions before this. **Do not** ask screen count.
-
-**Ask exactly (one message; user may answer in one reply, partially, or skip):**
-
-> Let’s brand your TomorrowOS experience (**all optional** — reply “skip” or leave blank to keep the starter `brand.json` defaults):
+> ❌ **Forbidden:** asking product name → wait → Next → tagline → Next → primary colour → …  
+> ❌ **Forbidden:** splitting branding into multiple questionnaire steps  
+> ✅ **Required:** one stacked form with every field visible together  
 >
-> 1. **Product / venue name** (optional — default from `brand.json`, e.g. `My Venue`)
-> 2. **Tagline** (optional — default e.g. `Digital signage`)
-> 3. **Primary colour** (optional hex — default e.g. `#FF8A3D`)
-> 4. **Background colour** (optional — default e.g. `#FAFAF9`)
-> 5. **Text colour** (optional — default e.g. `#0A0908`)
-> 6. **Secondary / accent colour** (optional — default e.g. `#F5F3EF`)
-> 7. **Logo** (optional) — upload an SVG/PNG, or a URL to fetch into `./assets/` (otherwise keep `./assets/logo.svg`)
+> **Every field is optional.** Blank / skip / “use defaults” → keep starter `brand.json`. **Do not** re-ask for missing fields.
+
+> **This is the only branding block.** Do not ask separate LLM_PROMPT “target platform”, “use case”, or “hosting” questions. **Do not** ask screen count.
+
+### Preferred UI (Replit form / multi-input dialog)
+
+Open **one** dialog titled e.g. **Brand your TomorrowOS experience** with these **seven inputs stacked in this order** (labels may match exactly):
+
+1. **Product / venue name** (optional — default from `brand.json`, e.g. `My Venue`)
+2. **Tagline** (optional — default e.g. `Digital signage`)
+3. **Primary colour** (optional hex — default e.g. `#FF8A3D`)
+4. **Background colour** (optional — default e.g. `#FAFAF9`)
+5. **Text colour** (optional — default e.g. `#0A0908`)
+6. **Secondary / accent colour** (optional — default e.g. `#F5F3EF`)
+7. **Logo** (optional) — upload SVG/PNG or paste a URL (otherwise keep `./assets/logo.svg`)
+
+Helper text on the dialog: *All fields optional. Leave blank to keep starter brand.json defaults. Submit once.*
+
+### If a form UI is unavailable — one chat message only
+
+Ask **exactly once** (user may answer all fields in a single reply, partially, or “skip”):
+
+> Let’s brand your TomorrowOS experience (**all optional — one reply**). Leave any field blank to keep starter `brand.json` defaults:
+>
+> 1. **Product / venue name**
+> 2. **Tagline**
+> 3. **Primary colour** (hex)
+> 4. **Background colour** (hex)
+> 5. **Text colour** (hex)
+> 6. **Secondary / accent colour** (hex)
+> 7. **Logo** (upload or URL)
+>
+> Reply with whatever you have in one message, or say **skip**.
 
 **Defaults rule (mandatory):**
 
 1. Start from the current project **`brand.json`** (after `init`, this matches the SDK starter).
-2. Overlay **only** fields the user actually provided.
+2. Overlay **only** fields the user actually provided in that single submission.
 3. If the user gives **no** product name → keep existing `"name"`.
 4. If the user gives **no** colours → keep existing `primaryColor` / `backgroundColor` / `textColor` / `secondaryColor`.
 5. If the user says **skip** / **defaults** / **n/a** / sends an empty answer → leave `brand.json` unchanged (except set `cms.hostingTarget` to `"here"` if needed — see below).
 6. **Never** re-ask for missing branding fields. **Never** treat blank name/colour as an error.
+7. **Never** follow up with “What about primary colour?” after they already submitted the branding dialog.
 
 **Then write / update `brand.json` only** at the project root (validate mentally against `brand.schema.json` in the SDK). **Do not** modify `.replit`, `server.ts`, Secrets, or deployment settings from these answers.
 
@@ -753,6 +798,9 @@ Do **not**:
 - Change the production start command away from `tsx server.ts` / `npm run start`
 - Point Supabase at Replit’s reserved `DATABASE_URL` when `SUPABASE_URL` should be used
 - List Q1 databases with **Replit PostgreSQL first** or mark it recommended instead of Supabase
+- Delay `SUPABASE_URL` until after Q1 is “done” or until Q2 — it must follow the Supabase choice **immediately**
+- Collect Cloudinary keys one-at-a-time with Next / separate turns — must be **one multi-field dialog** right after Cloudinary choice
+- Ask Q3 branding fields one-by-one (name → Next → colour → …) — must be **one stacked seven-field dialog**
 - **Ask for `SUPABASE_URL` / the Postgres connection string more than once** (Secrets UI + chat, or again during execution / Publish)
 - Ask the user to type `TOMORROWOS_STORE` or `DATABASE_SSL`
 - Skip Cloudinary recommendation without stating the persistence tradeoff
@@ -810,7 +858,9 @@ TOMORROWOS_STORE=sqlite
 
 ## Protocol version
 
-`replit-setup/1.10` — aligned with TomorrowOS protocol `1.0` and `@tomorrowos/sdk` store drivers `sqlite` | `supabase` | `postgres` | `memory`.
+`replit-setup/1.11` — aligned with TomorrowOS protocol `1.0` and `@tomorrowos/sdk` store drivers `sqlite` | `supabase` | `postgres` | `memory`.
+
+**Changelog 1.11:** Q1 Supabase → **immediate** `SUPABASE_URL` Secrets input; Q2 Cloudinary → **immediate multi-field** `CLOUDINARY_*` dialog; Q3 = **one stacked dialog with all seven** branding inputs (no field-by-field Next).
 
 **Changelog 1.10:** Question 1 is a **database choice** with fixed order: **1) Supabase (Recommended) → 2) Built-in Replit PostgreSQL → 3) SQLite**. Supabase still collects `SUPABASE_URL` once only.
 

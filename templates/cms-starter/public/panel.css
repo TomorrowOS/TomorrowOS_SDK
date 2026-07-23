@@ -1,3 +1,12 @@
+:root {
+  --brand-primary: #ff8a3d;
+  --brand-background: #f4f3f0;
+  --brand-text: #0a0908;
+  --brand-secondary: #fafaf9;
+  --brand-header-bg: #0a0908;
+  --brand-header-fg: #fafaf9;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -5,14 +14,14 @@
 body {
   margin: 0;
   font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  background: #f4f3f0;
-  color: #0a0908;
+  background: var(--brand-background);
+  color: var(--brand-text);
 }
 
 .app-header {
   padding: 1rem 1.5rem;
-  background: #0a0908;
-  color: #fafaf9;
+  background: var(--brand-header-bg);
+  color: var(--brand-header-fg);
 }
 
 .app-header h1 {
@@ -79,7 +88,7 @@ body {
 }
 
 .playlist-catalog-item--active {
-  border-color: #ff8a3d;
+  border-color: var(--brand-primary);
   background: #fff5ee;
 }
 
@@ -579,14 +588,14 @@ button:hover {
 }
 
 button.primary {
-  background: #ff8a3d;
-  border-color: #e67320;
-  color: #0a0908;
+  background: var(--brand-primary);
+  border-color: color-mix(in srgb, var(--brand-primary) 82%, #000);
+  color: var(--brand-text);
   font-weight: 600;
 }
 
 button.primary:hover {
-  background: #ff9a57;
+  background: color-mix(in srgb, var(--brand-primary) 88%, #fff);
 }
 
 button.danger {
@@ -670,7 +679,7 @@ button.danger {
 .upload-progress-bar {
   width: 0%;
   height: 100%;
-  background: #ff8a3d;
+  background: var(--brand-primary);
   transition: width 120ms linear;
 }
 
@@ -710,7 +719,7 @@ button.danger {
 }
 
 .playlist-item--drop-target {
-  border-color: #ff8a3d;
+  border-color: var(--brand-primary);
   box-shadow: 0 0 0 2px rgba(255, 138, 61, 0.25);
 }
 
@@ -1078,7 +1087,7 @@ button.danger {
 }
 
 .player-platform-link:focus-visible {
-  outline: 2px solid #ff8a3d;
+  outline: 2px solid var(--brand-primary);
   outline-offset: 3px;
 }
 

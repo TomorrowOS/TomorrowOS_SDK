@@ -530,23 +530,30 @@ export class TomorrowOS extends EventEmitter {
     }
     await this.store.deletePendingCode(normalized);
 
-    const ws = this.devices.get(deviceId);
+    // First-pair races: hello may still be awaiting registry I/O, or the socket
+    // briefly dropped between showing the code and verify. Wait a short window
+    // before giving up — hello-heal will still deliver verified on reconnect.
+    let ws = this.devices.get(deviceId);
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      ws = await this.waitForOpenDeviceSocket(deviceId, 5000);
+    }
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(
-        JSON.stringify({
-          type: "pairing.verified",
-          method: "tomorrowos.pairing.verify",
-          deviceId,
-          pairingToken
-        })
+      // Re-read in case a concurrent hello path touched the record.
+      const latest = await this.store.getPairedDevice(deviceId);
+      const tokenToSend = latest?.pairingToken || pairingToken;
+      if (latest && !latest.lastOnlineAt) {
+        await this.store.setPairedDevice(deviceId, {
+          ...latest,
+          lastOnlineAt: now,
+          lastOfflineAt: undefined
+        });
+      }
+      this.sendPairingVerified(ws, deviceId, tokenToSend);
+      this.afterDevicePairedNotify(deviceId);
+    } else {
+      console.warn(
+        `[TomorrowOS] pairing verified in store for ${deviceId}, but device socket not ready; will heal on next hello`
       );
-      void this.refreshPairedDeviceInfo(deviceId);
-      void this.pushLatestPolicyToDevice(deviceId).catch((err) => {
-        console.error("[TomorrowOS] pushLatestPolicy on paired failed:", err);
-      });
-      void this.pushOnOffTimerToDevice(deviceId).catch((err) => {
-        console.error("[TomorrowOS] pushOnOffTimer on paired failed:", err);
-      });
     }
 
     this.emit("device.paired", { deviceId });
@@ -712,8 +719,8 @@ export class TomorrowOS extends EventEmitter {
   }
 
   /**
-   * Clear the daily on/off timer. The player keeps its current mute / power-save
-   * state until a new timer is set.
+   * Clear the daily on/off timer and push null to the device.
+   * Connected players drop the schedule and turn the screen back on.
    */
   async clearDeviceOnOffTimer(deviceId: string): Promise<{
     deviceId: string;
@@ -842,6 +849,57 @@ export class TomorrowOS extends EventEmitter {
   private isDeviceConnected(deviceId: string): boolean {
     const ws = this.devices.get(deviceId);
     return !!ws && ws.readyState === WebSocket.OPEN;
+  }
+
+  /**
+   * Bind a live device socket. Never register a closed socket (avoids a late
+   * hello overwriting a healthy reconnect with a dead peer).
+   */
+  private bindDeviceSocket(deviceId: string, ws: DeviceSocket): boolean {
+    if (ws.readyState !== WebSocket.OPEN) return false;
+    ws.deviceId = deviceId;
+    this.devices.set(deviceId, ws);
+    return true;
+  }
+
+  /** Wait briefly for the device WebSocket to appear (first-pair hello races). */
+  private async waitForOpenDeviceSocket(
+    deviceId: string,
+    timeoutMs = 5000
+  ): Promise<DeviceSocket | undefined> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const ws = this.devices.get(deviceId);
+      if (ws && ws.readyState === WebSocket.OPEN) return ws;
+      if (Date.now() >= deadline) return undefined;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+
+  private sendPairingVerified(
+    ws: DeviceSocket,
+    deviceId: string,
+    pairingToken: string
+  ): void {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    ws.send(
+      JSON.stringify({
+        type: "pairing.verified",
+        method: "tomorrowos.pairing.verify",
+        deviceId,
+        pairingToken
+      })
+    );
+  }
+
+  private afterDevicePairedNotify(deviceId: string): void {
+    void this.refreshPairedDeviceInfo(deviceId);
+    void this.pushLatestPolicyToDevice(deviceId).catch((err) => {
+      console.error("[TomorrowOS] pushLatestPolicy on paired failed:", err);
+    });
+    void this.pushOnOffTimerToDevice(deviceId).catch((err) => {
+      console.error("[TomorrowOS] pushOnOffTimer on paired failed:", err);
+    });
   }
 
   private captureHelloMeta(deviceId: string, msg: Record<string, unknown>): void {
@@ -2068,6 +2126,13 @@ export class TomorrowOS extends EventEmitter {
             ? msg.serialNumber.trim()
             : deviceId;
 
+        // Bind identity before await so close can reconcile, and so verify can
+        // find this socket if pairing completes during registry I/O.
+        ws.deviceId = deviceId;
+        if (ws.readyState === WebSocket.OPEN) {
+          this.devices.set(deviceId, ws);
+        }
+
         void (async () => {
           try {
             const code = await this.getOrCreatePermanentPairingCode(
@@ -2075,15 +2140,30 @@ export class TomorrowOS extends EventEmitter {
               serialNumber
             );
 
+            if (!this.bindDeviceSocket(deviceId, ws)) {
+              return;
+            }
+
             this.captureHelloMeta(deviceId, msg);
-            this.devices.set(deviceId, ws);
+
+            // Heal first-pair miss: CMS already paired but player never got
+            // pairing.verified (socket missing at verify time). Send verified
+            // instead of showing the pairing code again.
+            const paired = await this.store.getPairedDevice(deviceId);
+            if (paired?.pairingToken) {
+              await this.touchPairedOnline(deviceId, msg);
+              this.sendBrandSnapshot(ws);
+              this.sendPairingVerified(ws, deviceId, paired.pairingToken);
+              this.afterDevicePairedNotify(deviceId);
+              this.emit("device.online", { deviceId });
+              return;
+            }
 
             void this.store.setPendingCode(code, {
               deviceId,
               createdAt: Date.now()
             });
 
-            ws.deviceId = deviceId;
             this.sendBrandSnapshot(ws);
             ws.send(
               JSON.stringify({
@@ -2119,8 +2199,9 @@ export class TomorrowOS extends EventEmitter {
           }
 
           this.captureHelloMeta(deviceId, msg);
-          this.devices.set(deviceId, ws);
-          ws.deviceId = deviceId;
+          if (!this.bindDeviceSocket(deviceId, ws)) {
+            return;
+          }
           await this.touchPairedOnline(deviceId, msg);
 
           ws.send(

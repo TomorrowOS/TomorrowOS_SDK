@@ -65,11 +65,12 @@ In Replit Agent, paste:
 Follow @tomorrowos/sdk REPLIT_SETUP.md and set up my TomorrowOS CMS.
 Ask me the questions in order. Do not skip steps.
 Q1 database order: Supabase (Recommended), then Built-in Replit PostgreSQL, then SQLite.
-If Supabase: collect SUPABASE_URL once only. Question 3 branding is all optional (defaults from brand.json).
+If Supabase: SUPABASE_URL Secrets input immediately after choice (once only).
+If Cloudinary: all CLOUDINARY_* Secrets in one multi-field dialog immediately after choice.
+Q3: one stacked dialog with all seven branding fields (optional; blanks keep brand.json defaults).
 ```
 
-That wizard asks database choice (**Supabase recommended first**), prefers Cloudinary for media, and writes
-`brand.json` from optional branding answers (missing fields keep starter defaults). On Replit, Supabase must use Secret
+That wizard asks database choice (**Supabase recommended first**), prefers Cloudinary for media, and collects optional branding in **one multi-field dialog**. On Replit, Supabase must use Secret
 **`SUPABASE_URL`** (not the reserved `DATABASE_URL` — that is for built-in Replit PostgreSQL).
 
 ### Lovable guided setup

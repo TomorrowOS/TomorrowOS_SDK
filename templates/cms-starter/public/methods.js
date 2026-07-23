@@ -44,6 +44,40 @@ const UPLOAD_MAX_RETRIES = 3;
 const DEVICE_RECONNECT_GRACE_MS = 60000;
 const UPLOAD_TIMEOUT_MS = 120000;
 
+/**
+ * Apply brand.json to the Control Panel (name + colours). No logo on the panel.
+ * Fetches same-origin GET /brand.json served by TomorrowOS.listen().
+ */
+async function applyBrandFromServer() {
+  try {
+    const res = await fetch("/brand.json", { cache: "no-store" });
+    if (!res.ok) return;
+    const brand = await res.json();
+    if (!brand || typeof brand !== "object") return;
+
+    const name = String(brand.name || "").trim() || "TomorrowOS";
+    document.title = name;
+    const heading = document.querySelector(".app-header h1");
+    if (heading) heading.textContent = name;
+
+    const tagline = String(brand.tagline || "").trim();
+    const subtitle = document.querySelector(".app-header p");
+    if (subtitle && tagline) subtitle.textContent = tagline;
+
+    const root = document.documentElement;
+    const primary = String(brand.primaryColor || "").trim();
+    const background = String(brand.backgroundColor || "").trim();
+    const text = String(brand.textColor || "").trim();
+    const secondary = String(brand.secondaryColor || "").trim();
+    if (primary) root.style.setProperty("--brand-primary", primary);
+    if (background) root.style.setProperty("--brand-background", background);
+    if (text) root.style.setProperty("--brand-text", text);
+    if (secondary) root.style.setProperty("--brand-secondary", secondary);
+  } catch (_) {
+    /* keep starter defaults */
+  }
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -1965,7 +1999,7 @@ async function removeOnOffTimerModal() {
 
   if (
     !confirm(
-      "Remove the on/off timer? The screen will stay in its current on or off state until you set a timer again."
+      "Remove the on/off timer? The schedule will be cleared and the screen will turn back on."
     )
   ) {
     return;
@@ -2285,6 +2319,8 @@ function startServerStatusPolling() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  void applyBrandFromServer();
+
   const cmsUrlSection = document.getElementById("cmsUrlSection");
   if (cmsUrlSection && !isLocalPanelHost(window.location.hostname)) {
     cmsUrlSection.classList.add("hidden");
