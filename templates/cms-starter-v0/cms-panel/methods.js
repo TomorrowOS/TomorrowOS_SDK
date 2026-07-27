@@ -43,6 +43,13 @@ let uploadInProgress = false;
 const UPLOAD_MAX_RETRIES = 3;
 const DEVICE_RECONNECT_GRACE_MS = 60000;
 const UPLOAD_TIMEOUT_MS = 120000;
+/** Direct-to-Cloudinary: no XHR timeout (large videos can exceed 2 minutes). */
+const CLOUDINARY_DIRECT_TIMEOUT_MS = 0;
+/** Cloudinary chunked upload minimum is 5MB; use 8MB chunks. */
+const CLOUDINARY_CHUNK_BYTES = 8 * 1024 * 1024;
+/** Single-request proxy uploads stay small; larger files use /media/upload-chunk. */
+const PROXY_SINGLE_MAX_BYTES = 2 * 1024 * 1024;
+const CHUNKED_PROXY_TIMEOUT_MS = 0;
 
 /**
  * Apply brand.json to the Control Panel (name + colours). No logo on the panel.
@@ -56,10 +63,9 @@ async function applyBrandFromServer() {
     if (!brand || typeof brand !== "object") return;
 
     const name = String(brand.name || "").trim() || "TomorrowOS";
-    const panelTitle = `${name} Control Panel`;
-    document.title = panelTitle;
+    document.title = name;
     const heading = document.querySelector(".app-header h1");
-    if (heading) heading.textContent = panelTitle;
+    if (heading) heading.textContent = name;
 
     const tagline = String(brand.tagline || "").trim();
     const subtitle = document.querySelector(".app-header p");
@@ -1662,19 +1668,315 @@ function uploadFileWithProgress(file, { onProgress, attempt }) {
   });
 }
 
-async function uploadFile(file, onProgress) {
+async function fetchCloudinaryUploadSign(filename) {
+  const q = new URLSearchParams({ filename: filename || "upload" });
+  const res = await fetch(`/media/upload-sign?${q.toString()}`, {
+    cache: "no-store"
+  });
+  if (res.status === 404) return null;
+  let payload = {};
+  try {
+    payload = await res.json();
+  } catch {
+    payload = {};
+  }
+  if (!res.ok || payload.status === "failed" || !payload.uploadUrl) {
+    if (res.status === 404) return null;
+    throw new Error(payload.error || `Upload sign failed (${res.status})`);
+  }
+  return payload;
+}
+
+function buildCloudinaryFormData(fileOrBlob, sign) {
+  const form = new FormData();
+  const name = String(sign.filenameOverride || fileOrBlob.name || "upload");
+  form.append("file", fileOrBlob, name);
+  form.append("api_key", String(sign.apiKey));
+  form.append("timestamp", String(sign.timestamp));
+  form.append("signature", String(sign.signature));
+  form.append("public_id", String(sign.publicId));
+  form.append("overwrite", "true");
+  form.append("unique_filename", "false");
+  form.append("use_filename", "false");
+  form.append("filename_override", name);
+  return form;
+}
+
+function xhrSendForm(url, form, { timeoutMs, onProgress, headers }) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url, true);
+    xhr.timeout = timeoutMs;
+    if (headers) {
+      for (const [key, value] of Object.entries(headers)) {
+        xhr.setRequestHeader(key, value);
+      }
+    }
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      if (typeof onProgress === "function") onProgress(event.loaded, event.total);
+    };
+    xhr.onerror = () => reject(new Error("Network error uploading to Cloudinary"));
+    xhr.ontimeout = () => reject(new Error("Cloudinary upload timed out"));
+    xhr.onload = () => {
+      let payload = {};
+      try {
+        payload = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+      } catch {
+        payload = {};
+      }
+      if (xhr.status >= 200 && xhr.status < 300 && !payload.error) {
+        resolve(payload);
+        return;
+      }
+      const msg =
+        payload.error?.message ||
+        payload.error ||
+        `Cloudinary upload failed (${xhr.status})`;
+      reject(new Error(typeof msg === "string" ? msg : JSON.stringify(msg)));
+    };
+    xhr.send(form);
+  });
+}
+
+async function uploadToCloudinaryDirect(file, sign, onProgress) {
+  const uploadUrl = String(sign.uploadUrl);
+  const uniqueUploadId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  if (file.size <= CLOUDINARY_CHUNK_BYTES) {
+    const form = buildCloudinaryFormData(file, sign);
+    const result = await xhrSendForm(uploadUrl, form, {
+      timeoutMs: CLOUDINARY_DIRECT_TIMEOUT_MS,
+      onProgress: (loaded, total) => {
+        if (typeof onProgress !== "function") return;
+        onProgress(Math.round((loaded / total) * 100));
+      }
+    });
+    return result;
+  }
+
+  let offset = 0;
+  let finalResult = null;
+  while (offset < file.size) {
+    const end = Math.min(offset + CLOUDINARY_CHUNK_BYTES, file.size);
+    const chunk = file.slice(offset, end);
+    const form = buildCloudinaryFormData(chunk, sign);
+    const chunkBase = offset;
+    // eslint-disable-next-line no-await-in-loop
+    finalResult = await xhrSendForm(uploadUrl, form, {
+      timeoutMs: CLOUDINARY_DIRECT_TIMEOUT_MS,
+      headers: {
+        "X-Unique-Upload-Id": uniqueUploadId,
+        "Content-Range": `bytes ${offset}-${end - 1}/${file.size}`
+      },
+      onProgress: (loaded) => {
+        if (typeof onProgress !== "function") return;
+        const overall = Math.min(file.size, chunkBase + loaded);
+        onProgress(Math.round((overall / file.size) * 100));
+      }
+    });
+    offset = end;
+  }
+  return finalResult;
+}
+
+async function registerCloudinaryUpload(file, cloudinaryResult) {
+  const res = await fetch("/media/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      publicId: cloudinaryResult.public_id,
+      resourceType: cloudinaryResult.resource_type || "auto",
+      originalFilename: file.name,
+      mimeType: file.type || undefined
+    })
+  });
+  let payload = {};
+  try {
+    payload = await res.json();
+  } catch {
+    payload = {};
+  }
+  if (!res.ok || payload.status === "failed") {
+    throw new Error(payload.error || `Register failed (${res.status})`);
+  }
+  return payload;
+}
+
+async function uploadViaCloudinaryDirect(file, onProgress) {
+  const sign = await fetchCloudinaryUploadSign(file.name);
+  if (!sign) return null;
+  const cloudinaryResult = await uploadToCloudinaryDirect(file, sign, onProgress);
+  if (!cloudinaryResult?.public_id) {
+    throw new Error("Cloudinary upload returned no public_id");
+  }
+  if (typeof onProgress === "function") onProgress(100);
+  return registerCloudinaryUpload(file, cloudinaryResult);
+}
+
+function xhrSendBinary(url, body, { timeoutMs, onProgress, contentType }) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url, true);
+    xhr.timeout = timeoutMs;
+    if (contentType) xhr.setRequestHeader("Content-Type", contentType);
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      if (typeof onProgress === "function") onProgress(event.loaded, event.total);
+    };
+    xhr.onerror = () => reject(new Error("Network error on chunked upload"));
+    xhr.ontimeout = () => reject(new Error("Chunked upload timed out"));
+    xhr.onload = () => {
+      let payload = {};
+      try {
+        payload = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+      } catch {
+        payload = {};
+      }
+      if (xhr.status >= 200 && xhr.status < 300 && payload.status !== "failed") {
+        resolve(payload);
+        return;
+      }
+      reject(new Error(payload.error || `Upload failed (${xhr.status})`));
+    };
+    xhr.send(body);
+  });
+}
+
+async function fetchUploadCapabilities() {
+  try {
+    const res = await fetch("/media/upload-capabilities", { cache: "no-store" });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+async function uploadViaChunkedProxy(file, onProgress) {
+  const initRes = await fetch("/media/upload-init", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      filename: file.name,
+      size: file.size,
+      mimeType: file.type || undefined
+    })
+  });
+  let initPayload = {};
+  try {
+    initPayload = await initRes.json();
+  } catch {
+    initPayload = {};
+  }
+  if (initRes.status === 404 || /not found/i.test(String(initPayload.error || ""))) {
+    const err = new Error(initPayload.error || "Not found");
+    err.code = "CHUNKED_UNAVAILABLE";
+    throw err;
+  }
+  if (!initRes.ok || initPayload.status === "failed" || !initPayload.uploadId) {
+    throw new Error(initPayload.error || `Upload init failed (${initRes.status})`);
+  }
+
+  const uploadId = String(initPayload.uploadId);
+  const chunkSize = Number(initPayload.chunkSize) || 1 * 1024 * 1024;
+  const totalChunks =
+    Number(initPayload.totalChunks) || Math.ceil(file.size / chunkSize);
+  let uploadedBytes = 0;
+
+  for (let index = 0; index < totalChunks; index += 1) {
+    const start = index * chunkSize;
+    const end = Math.min(start + chunkSize, file.size);
+    const chunk = file.slice(start, end);
+    const q = new URLSearchParams({
+      uploadId,
+      index: String(index)
+    });
+    await xhrSendBinary(`/media/upload-chunk?${q.toString()}`, chunk, {
+      timeoutMs: CHUNKED_PROXY_TIMEOUT_MS,
+      contentType: "application/octet-stream",
+      onProgress: (loaded) => {
+        if (typeof onProgress !== "function") return;
+        const overall = Math.min(file.size, uploadedBytes + loaded);
+        onProgress(Math.round((overall / file.size) * 100));
+      }
+    });
+    uploadedBytes = end;
+    if (typeof onProgress === "function") {
+      onProgress(Math.round((uploadedBytes / file.size) * 100));
+    }
+  }
+
+  const completeRes = await fetch("/media/upload-complete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uploadId })
+  });
+  let completePayload = {};
+  try {
+    completePayload = await completeRes.json();
+  } catch {
+    completePayload = {};
+  }
+  if (
+    !completeRes.ok ||
+    completePayload.status === "failed" ||
+    !completePayload.assetId
+  ) {
+    throw new Error(
+      completePayload.error || `Upload complete failed (${completeRes.status})`
+    );
+  }
+  if (typeof onProgress === "function") onProgress(100);
+  return completePayload;
+}
+
+async function uploadViaSingleProxy(file, onProgress) {
   let lastErr = null;
   for (let attempt = 1; attempt <= UPLOAD_MAX_RETRIES; attempt += 1) {
     try {
-      const payload = await uploadFileWithProgress(file, { onProgress, attempt });
-      return payload;
+      return await uploadFileWithProgress(file, { onProgress, attempt });
     } catch (err) {
       lastErr = err;
+      const msg = err?.message || String(err);
+      if (/Upload failed \(413\)|USE_CHUNKED|too large for single-request/i.test(msg)) {
+        break;
+      }
       if (attempt >= UPLOAD_MAX_RETRIES) break;
       await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
     }
   }
   throw lastErr || new Error("Upload failed");
+}
+
+async function uploadFile(file, onProgress) {
+  try {
+    const direct = await uploadViaCloudinaryDirect(file, onProgress);
+    if (direct) return direct;
+  } catch (err) {
+    const msg = err?.message || String(err);
+    // Fall back to proxy upload only when Cloudinary is unavailable.
+    if (!/not configured|Upload sign failed \(404\)/i.test(msg)) {
+      throw err;
+    }
+  }
+
+  const caps = await fetchUploadCapabilities();
+  const chunkedSupported = caps?.chunked === true;
+
+  if (chunkedSupported || file.size > PROXY_SINGLE_MAX_BYTES) {
+    try {
+      return await uploadViaChunkedProxy(file, onProgress);
+    } catch (err) {
+      if (err?.code === "CHUNKED_UNAVAILABLE" || /not found/i.test(err?.message || "")) {
+        // Panel JS is newer than the CMS server — fall back so uploads work again.
+        return uploadViaSingleProxy(file, onProgress);
+      }
+      throw err;
+    }
+  }
+
+  return uploadViaSingleProxy(file, onProgress);
 }
 
 async function addAssetFromFile(file, queueIndex, queueTotal) {

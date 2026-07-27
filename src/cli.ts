@@ -251,10 +251,10 @@ Options:
   --force                         With init: copy into a non-empty directory
 
 Examples:
-  npx @tomorrowos/sdk init
-  npx @tomorrowos/sdk init ./my-cms --hosting replit
-  npx @tomorrowos/sdk init ./my-cms --hosting v0
-  npx @tomorrowos/sdk migrate --from sqlite --from-sqlite ./data/tomorrowos.db --to supabase --to-database-url "$DATABASE_URL"
+  npx @tomorrowos/sdk@latest init .
+  npx @tomorrowos/sdk@latest init ./my-cms --hosting replit
+  npx @tomorrowos/sdk@latest init ./my-cms --hosting v0
+  npx @tomorrowos/sdk@latest migrate --from sqlite --from-sqlite ./data/tomorrowos.db --to supabase --to-database-url "$DATABASE_URL"
 `);
 }
 

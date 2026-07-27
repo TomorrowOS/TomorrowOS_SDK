@@ -2,9 +2,20 @@ import fs from "fs/promises";
 import path from "path";
 
 import {
+  getReplitObjectStorageClient,
+  isReplitHost,
+  resolveReplitObjectStorageMode
+} from "./replit-object-storage.js";
+import {
   pingCloudinary,
   resolveCloudinaryConfig
 } from "./cloudinary-storage.js";
+import {
+  isVercelBlobConfigured,
+  pingVercelBlob,
+  resolveVercelBlobMode,
+  resolveVercelBlobToken
+} from "./vercel-blob-storage.js";
 import { getSdkPackageVersion } from "./sdk-version.js";
 import type { TomorrowOSStore } from "./store/types.js";
 
@@ -42,15 +53,6 @@ export interface BuildServerStatusOptions {
   probeTimeoutMs?: number;
 }
 
-function isReplitHost(env: NodeJS.ProcessEnv): boolean {
-  return !!(
-    env.REPL_ID ||
-    env.REPLIT_DEV_DOMAIN ||
-    env.REPLIT_DEPLOYMENT ||
-    env.REPL_SLUG
-  );
-}
-
 /** Replit Preview/dev often cannot resolve Supabase hosts — not a config error. */
 function isReplitPreviewDnsFailure(message: string): boolean {
   const m = String(message || "").toLowerCase();
@@ -64,38 +66,86 @@ function isReplitPreviewDnsFailure(message: string): boolean {
   );
 }
 
+function isNeonDatabaseUrl(url: string): boolean {
+  const u = String(url || "").toLowerCase();
+  return (
+    u.includes("neon.tech") ||
+    u.includes("neon.db") ||
+    /\.neon\./.test(u)
+  );
+}
+
+/**
+ * Display name shown next to "Database" in the Control Panel status card.
+ * Prefer specific products (Neon / Supabase / Replit Postgres) over generic PostgreSQL.
+ */
 function resolveDatabaseProvider(env: NodeJS.ProcessEnv): {
   provider: string;
   label: string;
   configured: boolean;
+  kind: "supabase" | "postgres" | "sqlite" | "memory" | "unknown";
 } {
   const driver = String(env.TOMORROWOS_STORE || "").trim().toLowerCase();
-  const hasUrl = !!(env.SUPABASE_URL || env.DATABASE_URL);
+  const supabaseUrl = String(env.SUPABASE_URL || "").trim();
+  const databaseUrl = String(env.DATABASE_URL || "").trim();
+  const hasUrl = !!(supabaseUrl || databaseUrl);
+  const probeUrl = supabaseUrl || databaseUrl;
 
-  if (driver === "supabase" || (!driver && env.SUPABASE_URL)) {
+  if (driver === "supabase" || (!driver && supabaseUrl)) {
     return {
-      provider: "supabase",
+      provider: "Supabase",
       label: "Database",
-      configured: !!env.SUPABASE_URL || !!env.DATABASE_URL
+      configured: hasUrl,
+      kind: "supabase"
     };
   }
-  if (driver === "postgres" || (!driver && hasUrl && !env.SUPABASE_URL)) {
+  if (driver === "postgres" || (!driver && hasUrl && !supabaseUrl)) {
+    if (isNeonDatabaseUrl(probeUrl)) {
+      return {
+        provider: "Neon",
+        label: "Database",
+        configured: hasUrl,
+        kind: "postgres"
+      };
+    }
+    if (isReplitHost(env)) {
+      return {
+        provider: "Replit Postgres",
+        label: "Database",
+        configured: hasUrl,
+        kind: "postgres"
+      };
+    }
     return {
-      provider: "postgres",
+      provider: "PostgreSQL",
       label: "Database",
-      configured: hasUrl
+      configured: hasUrl,
+      kind: "postgres"
     };
   }
   if (driver === "memory") {
-    return { provider: "memory", label: "Database", configured: true };
+    return {
+      provider: "Memory",
+      label: "Database",
+      configured: true,
+      kind: "memory"
+    };
   }
   if (driver === "sqlite" || !driver) {
-    return { provider: "sqlite", label: "Database", configured: true };
+    return {
+      provider: "SQLite",
+      label: "Database",
+      configured: true,
+      kind: "sqlite"
+    };
   }
+  const pretty =
+    driver.charAt(0).toUpperCase() + driver.slice(1).toLowerCase();
   return {
-    provider: driver || "unknown",
+    provider: pretty || "Unknown",
     label: "Database",
-    configured: hasUrl || driver === "sqlite" || driver === "memory"
+    configured: hasUrl || driver === "sqlite" || driver === "memory",
+    kind: "unknown"
   };
 }
 
@@ -127,7 +177,7 @@ async function probeDatabase(
 ): Promise<ConnectorStatus> {
   const meta = resolveDatabaseProvider(env);
   const wantsRemote =
-    meta.provider === "supabase" || meta.provider === "postgres";
+    meta.kind === "supabase" || meta.kind === "postgres";
 
   if (wantsRemote && !meta.configured) {
     return {
@@ -142,7 +192,7 @@ async function probeDatabase(
 
   try {
     await withTimeout(store.listPairedDevices(), timeoutMs, meta.label);
-    if (meta.provider === "memory") {
+    if (meta.kind === "memory") {
       return {
         id: "database",
         label: meta.label,
@@ -151,7 +201,7 @@ async function probeDatabase(
         detail: "In-memory only — data is lost on restart."
       };
     }
-    if (meta.provider === "sqlite" && isReplitHost(env)) {
+    if (meta.kind === "sqlite" && isReplitHost(env)) {
       return {
         id: "database",
         label: meta.label,
@@ -166,7 +216,7 @@ async function probeDatabase(
       label: meta.label,
       provider: meta.provider,
       state: "ok",
-      detail: `${meta.label} reachable`
+      detail: `${meta.provider} reachable`
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -206,7 +256,7 @@ async function probeMedia(
       return {
         id: "media",
         label: "Media Server",
-        provider: "cloudinary",
+        provider: "Cloudinary",
         state: "ok",
         detail: `Cloudinary (${cloudinary.cloudName}) reachable`
       };
@@ -215,7 +265,7 @@ async function probeMedia(
       return {
         id: "media",
         label: "Media Server",
-        provider: "cloudinary",
+        provider: "Cloudinary",
         state: "error",
         detail: message
       };
@@ -231,18 +281,94 @@ async function probeMedia(
     return {
       id: "media",
       label: "Media Server",
-      provider: "cloudinary",
+      provider: "Cloudinary",
       state: "error",
       detail:
         "Cloudinary config incomplete — set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET."
     };
   }
 
-  const provider = isReplitHost(env) ? "replit-object-storage" : "local";
-  const providerLabel =
-    provider === "replit-object-storage"
-      ? "Replit Object Storage / local uploads"
-      : "Local uploads";
+  const blobMode = resolveVercelBlobMode(env);
+  if (blobMode !== "off") {
+    const token = resolveVercelBlobToken(env);
+    if (!token) {
+      return {
+        id: "media",
+        label: "Media Server",
+        provider: "Blob",
+        state: "error",
+        detail:
+          "Vercel Blob required but BLOB_READ_WRITE_TOKEN is not set. Link a Blob store to this Vercel project."
+      };
+    }
+    try {
+      await withTimeout(pingVercelBlob(token), timeoutMs, "Blob");
+      return {
+        id: "media",
+        label: "Media Server",
+        provider: "Blob",
+        state: "ok",
+        detail: "Blob reachable"
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (blobMode === "required" || isVercelBlobConfigured(env)) {
+        return {
+          id: "media",
+          label: "Media Server",
+          provider: "Blob",
+          state: "error",
+          detail: message
+        };
+      }
+      // preferred but ping failed: fall through
+    }
+  }
+
+  const rosMode = resolveReplitObjectStorageMode(env);
+  if (rosMode !== "off") {
+    try {
+      const ros = await getReplitObjectStorageClient(env);
+      if (ros) {
+        await ros.ping();
+        return {
+          id: "media",
+          label: "Media Server",
+          provider: "Replit Object Storage",
+          state: "ok",
+          detail: "Replit Object Storage reachable"
+        };
+      }
+      if (rosMode === "required") {
+        return {
+          id: "media",
+          label: "Media Server",
+          provider: "Replit Object Storage",
+          state: "error",
+          detail:
+            "TOMORROWOS_MEDIA requires Replit Object Storage but no client is available. Link an App Storage bucket and install @replit/object-storage."
+        };
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (rosMode === "required") {
+        return {
+          id: "media",
+          label: "Media Server",
+          provider: "Replit Object Storage",
+          state: "error",
+          detail: message
+        };
+      }
+      // preferred: fall through to local disk probe
+    }
+  }
+
+  const onReplit = isReplitHost(env);
+  const provider = onReplit ? "Replit Object Storage" : "Local";
+  const providerLabel = onReplit
+    ? "Local uploads (Object Storage not active)"
+    : "Local uploads";
 
   if (!staticRoot) {
     return {
@@ -250,7 +376,7 @@ async function probeMedia(
       label: "Media Server",
       provider,
       state: "missing",
-      detail: "No Cloudinary and staticRoot is unset — media uploads are unavailable."
+      detail: "No durable media backend and staticRoot is unset — uploads unavailable."
     };
   }
 
@@ -263,7 +389,7 @@ async function probeMedia(
       label: "Media Server",
       provider,
       state: "warn",
-      detail: `${providerLabel} writable. Uploads may not survive rebuilds — Cloudinary recommended.`
+      detail: `${providerLabel} at ${uploadsDir}. Prefer Cloudinary, Blob, or Replit Object Storage for production.`
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -289,19 +415,24 @@ function buildBlockers(connectors: ConnectorStatus[]): StatusBlocker[] {
         fixHint:
           c.state === "missing"
             ? "Paste your Supabase Postgres connection string as Secret SUPABASE_URL, set TOMORROWOS_STORE=supabase, then restart the CMS."
-            : "Check SUPABASE_URL / network / SSL (DATABASE_SSL=true). After Publish, confirm the live URL can reach Supabase."
+            : "Check SUPABASE_URL / DATABASE_URL / network / SSL (DATABASE_SSL=true). After Publish, confirm the live URL can reach the database."
       });
     }
 
     if (c.id === "media" && c.state === "error") {
+      const provider = String(c.provider || "");
       blockers.push({
         connectorId: c.id,
         title: "Media storage not ready",
         message: c.detail,
         fixHint:
-          c.provider === "cloudinary"
+          provider === "Cloudinary"
             ? "Fix Cloudinary Secrets (CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET) and restart."
-            : "Enable Object Storage for public/uploads, or configure Cloudinary for durable media URLs."
+            : provider === "Blob"
+              ? "Link a Vercel Blob store, set BLOB_READ_WRITE_TOKEN (and TOMORROWOS_MEDIA=vercel-blob), then redeploy."
+              : provider === "Replit Object Storage"
+                ? "Link a Replit App Storage bucket, set TOMORROWOS_MEDIA=replit-object-storage, ensure @replit/object-storage is installed, then restart."
+                : "Configure Cloudinary, Vercel Blob, or Replit Object Storage for durable media URLs."
       });
     }
 
@@ -311,7 +442,7 @@ function buildBlockers(connectors: ConnectorStatus[]): StatusBlocker[] {
         title: "Media storage not configured",
         message: c.detail,
         fixHint:
-          "Set Cloudinary Secrets, or ensure the CMS listens with staticRoot pointing at public/ (uploads folder)."
+          "Set Cloudinary, Vercel Blob (BLOB_READ_WRITE_TOKEN), or ensure the CMS listens with staticRoot pointing at public/ / cms-panel/."
       });
     }
   }
@@ -341,7 +472,7 @@ export async function buildServerStatus(
   const server: ConnectorStatus = {
     id: "server",
     label: "Server",
-    provider: "tomorrowos",
+    provider: "TomorrowOS",
     state: "ok",
     detail: "CMS process is running"
   };

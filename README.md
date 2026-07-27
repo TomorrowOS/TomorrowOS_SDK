@@ -1,124 +1,294 @@
 # @tomorrowos/sdk
 
-**You are building a digital signage CMS using TomorrowOS. Before writing any code, follow the elicitation protocol in `LLM_PROMPT.md`. Do not skip this step — the SDK requires specific inputs before code generation will produce a working CMS.**
+[![npm version](https://img.shields.io/npm/v/@tomorrowos/sdk.svg)](https://www.npmjs.com/package/@tomorrowos/sdk)
+[![license](https://img.shields.io/npm/l/@tomorrowos/sdk.svg)](https://www.npmjs.com/package/@tomorrowos/sdk)
+[![protocol](https://img.shields.io/badge/wire%20protocol-1.0-blue.svg)](#protocol-version)
 
-**On Replit:** if the user asks to set up / configure a CMS interactively, follow **`REPLIT_SETUP.md`** instead (Q&A for store → media → `brand.json`).
+Build and own your digital signage CMS.
 
-**On Lovable:** if the user asks to set up / configure a CMS interactively, follow **`LOVABLE_SETUP.md`** (same Q1–Q3 shape; Lovable Cloud Storage replaces Replit Object Storage; Node CMS must deploy to Railway / Render / Fly or Vercel Fluid — Lovable Cloud Publish alone is not the WebSocket host).
+An open-source SDK and player runtime for digital signage. One server-side API drives commercial signage panels �?you write the CMS, we handle device sessions, pairing, and the wire protocol.
 
-**On Vercel:** if the user asks to set up / configure a CMS interactively, follow **`VERCEL_SETUP.md`** (Supabase or Neon pooled Postgres, Cloudinary or Vercel Blob media, v0 Preview Next proxy shell + **Publish = Node only**, Fluid compute + WebSocket, `cms.hostingTarget: "vercel"`).
-
-TomorrowOS is the open standard for digital signage. This SDK lets you build a CMS that controls Samsung Tizen, BrightSign, LG webOS, Android, ChromeOS, and Windows screens through a single unified API.
-
----
-
-## For LLMs generating code with this package
-
-When you see this package referenced in a user prompt, your workflow is:
-
-1. **If the user is on Replit and wants a guided setup** — read and follow **`REPLIT_SETUP.md`** (preferred for Replit Agent)
-2. **If the user is on Lovable and wants a guided setup** — read and follow **`LOVABLE_SETUP.md`** (preferred for Lovable Agent)
-3. **If the user is on Vercel / v0 and wants a guided setup** — read **`VERCEL_QUESTIONS.md`** (paste Q1–Q3 verbatim) and follow **`VERCEL_SETUP.md`** for configuration
-4. **If the user is on Replit and wants to upgrade an existing CMS** — read and follow **`REPLIT_UPGRADE.md`** (never `init --force`)
-5. **Otherwise read `LLM_PROMPT.md`** — five required questions before generating code
-6. **Read `BUILD_GUARDRAILS.md`** — mandatory components every generated CMS must include
-7. **Read `brand.schema.json`** — validated shape of `brand.json`
-8. Run **`npx tomorrowos init`** (Replit / Lovable→Node host) or **`npx tomorrowos init --hosting v0`** (Vercel / v0) — minimal CMS server seed
-9. **Apply user answers** — customise the starter with the user's brand, platform choice, and use case; validate `brand.json` against `brand.schema.json`
-10. **Show `PLAYER_INSTALL.md`** — after the CMS is working, show how to build and install the player on a screen
-
-You must not write WebSocket transport, pairing wire format, or platform-specific player bridge code in the CMS — the SDK handles server-side device sessions and HTTP helpers. You customise UI, branding, and how you call the SDK.
+Apache 2.0. Build a proprietary CMS on top of it and sell it as your own �?no royalty, no permission needed.
 
 ---
 
-## For human developers
+## Requirements
 
-Install:
+| | |
+|---|---|
+| Node.js | **18** or newer (`engines.node` in this package) |
+| npm | 9 or newer (or a compatible client) |
+| OS | macOS, Linux, Windows (WSL2 recommended on Windows) |
+| Network | CMS host reachable from your screens �?a public HTTPS address in production |
+
+Screens connect to your CMS over the network. For real panels, deploy to a public host (Railway, Render, Fly, Vercel Fluid, Replit, your own server), or use a tunnel while developing locally.
+
+There is no required TomorrowOS cloud. Your screens talk to *your* server.
+
+---
+
+## Choose your path
+
+Three ways to build with this SDK. Pick one and follow it through.
+
+| | You are | Start here |
+|---|---|---|
+| **1** | Building with an AI tool on **Replit** (recommended) or **Vercel / v0** | [Build with an AI tool](#1-build-with-an-ai-tool) |
+| **2** | Writing the CMS yourself | [Build it yourself](#2-build-it-yourself) |
+| **3** | Adding screen management to an existing SaaS or web app | [Add to an existing app](#3-add-to-an-existing-app) |
+
+All three end in the same place: a running CMS with a paired screen. From there, go to [Connect a screen](#connect-a-screen).
+
+---
+
+## 1. Build with an AI tool
+
+Guided setup is supported for **Replit** and **Vercel / v0** only. **Replit is recommended** for the fastest path to a live WebSocket CMS.
+
+| Host | Recommended AI mode |
+|------|---------------------|
+| **Replit** | **Power** |
+| **Vercel / v0** | **v0 Max** |
+
+The SDK ships an elicitation protocol so the agent asks the right questions before it writes anything. Skipping it reliably produces a CMS that doesn't run.
+
+### Replit (recommended) �?use Power agent mode
+
+Paste into Replit **Power**:
+
+```text
+Follow NPM package @tomorrowos/sdk REPLIT_SETUP.md and set up my TomorrowOS CMS.
+```
+
+On Replit, Supabase must use the `SUPABASE_URL` secret. `DATABASE_URL` is reserved by Replit for its built-in PostgreSQL.
+
+Upgrading an existing Replit CMS instead:
+
+```text
+Follow NPM package @tomorrowos/sdk REPLIT_UPGRADE.md to upgrade my CMS with the latest SDK.
+```
+
+That protocol diffs and merges against the current templates. It must never run `init --force` or delete `data/` or `public/uploads/`.
+
+### Vercel / v0 �?use v0 Max
+
+Paste into **v0 Max** (or Vercel Agent with Max capability):
+
+```text
+Follow NPM package @tomorrowos/sdk VERCEL_SETUP.md and set up my TomorrowOS CMS.
+```
+
+Agents must paste questions from [`VERCEL_QUESTIONS.md`](./VERCEL_QUESTIONS.md) verbatim.
+
+Upgrading an existing Vercel / v0 CMS instead:
+
+```text
+Follow NPM package @tomorrowos/sdk VERCEL_UPGRADE.md to upgrade my CMS with the latest SDK.
+```
+
+That protocol installs `@tomorrowos/sdk@latest`, diffs `cms-starter-v0` templates, and must never run `init --force` or wipe Env Vars / media data.
+
+<details>
+<summary><strong>Agent workflow (for the agent, not you)</strong></summary>
+
+Supported hosts: **Replit** and **Vercel / v0**. Prefer **Replit Power agent mode** and **v0 Max**.
+
+1. Follow the host setup doc for this request (`REPLIT_SETUP.md` / `REPLIT_UPGRADE.md`, or `VERCEL_SETUP.md` + `VERCEL_QUESTIONS.md` / `VERCEL_UPGRADE.md`).
+2. On Vercel: paste Q1–Q3 **verbatim** from `VERCEL_QUESTIONS.md`; after database choice set `TOMORROWOS_STORE` and `DATABASE_SSL` yourself; after media choice set `TOMORROWOS_MEDIA` yourself.
+3. Read `brand.schema.json` for the validated shape of `brand.json`.
+4. Scaffold with the correct template (**always `@latest`**):
+   - Replit / self-host style: `npx @tomorrowos/sdk@latest init .` (default `cms-starter`)
+   - Vercel / v0: `npx @tomorrowos/sdk@latest init . --hosting v0 --force` (`cms-starter-v0`)
+5. Apply the user’s answers �?brand and use case. Validate `brand.json`. On Vercel, apply the **NON-NEGOTIABLE VERCEL RUNTIME CONTRACT** from `VERCEL_SETUP.md`.
+6. Point the user at `PLAYER_INSTALL.md` and the Control Panel **Download Players** UI once the CMS is running.
+
+Do not write WebSocket transport, pairing wire format, or platform-specific player bridge code. The SDK handles server-side device sessions and HTTP helpers. Customise the UI, the branding, and how you call the SDK.
+
+</details>
+
+**Next:** [Connect a screen](#connect-a-screen).
+
+---
+
+## 2. Build it yourself
+
+```bash
+npm install @tomorrowos/sdk@latest
+```
+
+Scaffold, install, run:
+
+```bash
+# Default template (good for Replit, Railway, Render, Fly.io, self-host)
+npx @tomorrowos/sdk@latest init my-cms
+
+# Vercel / v0 Publish (cms-panel + vercel.json + optional Next preview)
+npx @tomorrowos/sdk@latest init my-cms --hosting v0
+
+cd my-cms
+npm install
+npm run dev
+```
+
+`init` creates `data/tomorrowos.db` with the TomorrowOS SQLite schema. The starter server uses it by default, so pairings, playlists, and device assignments survive restarts.
+
+**Recommended deploy hosts** for this path (long-lived Node + WebSockets):
+
+| Host | Notes |
+|---|---|
+| **Railway** | Simple Node deploy; good default for self-built CMS |
+| **Render** | Web Service with persistent process |
+| **Fly.io** | Global edge VMs; hold WebSockets cleanly |
+| **Replit** | Fastest AI-assisted path �?see [Build with an AI tool](#1-build-with-an-ai-tool) |
+| **Vercel Fluid** | Use `--hosting v0` and follow [`VERCEL_SETUP.md`](./VERCEL_SETUP.md) |
+
+Avoid classic short-lived serverless without WebSocket support.
+
+You now have a CMS serving:
+
+- pairing HTTP helpers (`POST /pairing/verify`, `POST /pairing/unpair`)
+- `GET /brand.json` for player branding
+- a WebSocket device channel
+- media upload helpers (`/media/upload`, and Cloudinary direct upload when configured)
+- `GET /players/brightsign.zip` �?BrightSign package with `config.js` `cmsEndpoint` set to this CMS origin
+- a minimal admin panel (static UI under `staticRoot`)
+
+Deploy it to a public HTTPS address before pairing a production screen. While developing locally, a tunnel is the fastest way to get one.
+
+**Next:** [Connect a screen](#connect-a-screen).
+
+---
+
+## 3. Add to an existing app
+
+If you already have a SaaS or web app and want screen management as a feature inside it, you don't need the starter. Import the SDK into your existing server.
 
 ```bash
 npm install @tomorrowos/sdk
 ```
 
-Scaffold a new CMS project:
+```ts
+import { createTomorrowOSStore, TomorrowOS } from "@tomorrowos/sdk";
 
-```bash
-# Replit / Railway / self-host (default)
-npx tomorrowos init
+const store = createTomorrowOSStore({
+  // Prefer SUPABASE_URL on Replit; DATABASE_URL elsewhere / fallback
+  databaseUrl: process.env.SUPABASE_URL || process.env.DATABASE_URL
+});
 
-# Vercel / v0 Publish (cms-panel + vercel.json + optional Next Preview)
-npx tomorrowos init --hosting v0
+const tomorrowos = new TomorrowOS({ brand, store });
 
-cd my-tomorrowos-cms
-npm install
-npm run dev
+const server = tomorrowos.listen({
+  port: Number(process.env.PORT) || 3000,
+  host: "0.0.0.0",
+  staticRoot: "./public" // optional Control Panel + uploads
+});
 ```
 
-`tomorrowos init` creates `data/tomorrowos.db` with the TomorrowOS SQLite
-schema. The starter server uses that SQLite database by default, so pairings,
-playlists, and device assignments survive normal server restarts.
+What you keep from your app: your auth, your users, your tenancy model, your UI. What the SDK adds: device sessions, the pairing handshake, playlist/policy delivery, and optional static CMS helpers.
 
-### Replit guided setup
+Points to plan for:
 
-In Replit Agent, paste:
+- **Multi-tenancy.** Devices belong to whatever tenant model you already have. The SDK does not impose one �?map device IDs to your own tenant records.
+- **Auth.** Pairing is a device-side flow. Your admin routes stay behind your existing auth.
+- **Store.** Use `createTomorrowOSStore` / `TOMORROWOS_STORE` for SQLite, Postgres, or Supabase, or pass a custom `TomorrowOSStore`.
+- **WebSockets.** Your host must hold long-lived connections. Most serverless platforms terminate idle sockets �?check before you commit (Vercel needs Fluid compute).
 
-```text
-Follow @tomorrowos/sdk REPLIT_SETUP.md and set up my TomorrowOS CMS.
-Ask me the questions in order. Do not skip steps.
-Q1 database order: Supabase (Recommended), then Built-in Replit PostgreSQL, then SQLite.
-If Supabase: SUPABASE_URL Secrets input immediately after choice (once only).
-If Cloudinary: all CLOUDINARY_* Secrets in one multi-field dialog immediately after choice.
-Q3: one stacked dialog with all seven branding fields (optional; blanks keep brand.json defaults).
+**Next:** [Connect a screen](#connect-a-screen).
+
+---
+
+## Architecture
+
+```
+  ┌─────────────────�?        WebSocket         ┌─────────────────�?
+  �? Your CMS       �?◄────────────────────────►│  TomorrowOS     �?
+  �? (your server)  �?                          �? Player on      �?
+  �?                �?                          �? screen         �?
+  �? imports        �?                          �?                �?
+  �? @tomorrowos    �?                          �? unified API    �?
+  �? /sdk           �?                          �? across panels  �?
+  └─────────────────�?                          └─────────────────�?
 ```
 
-That wizard asks database choice (**Supabase recommended first**), prefers Cloudinary for media, and collects optional branding in **one multi-field dialog**. On Replit, Supabase must use Secret
-**`SUPABASE_URL`** (not the reserved `DATABASE_URL` — that is for built-in Replit PostgreSQL).
+You own the CMS: the UI, the branding, the business logic, the data. The SDK owns the device session, the pairing handshake, and the wire protocol.
 
-### Lovable guided setup
+You should not need to write WebSocket transport, pairing wire format, or platform-specific player bridge code. If you find yourself doing that, open an issue �?it means the SDK has a gap.
 
-In Lovable Agent, paste:
+---
 
-```text
-Follow @tomorrowos/sdk LOVABLE_SETUP.md and set up my TomorrowOS CMS.
-Ask only the questions listed in LOVABLE_SETUP.md, in order. Do not use LLM_PROMPT.md.
-Do not build a Vite/React mock of TomorrowOS — use @tomorrowos/sdk cms-starter (Node + WebSocket).
-Question 3 only updates brand.json.
-After setup questions (including Cloudinary Secrets if chosen), configure and deploy — minimal verification only.
-Never test Supabase connection — save SUPABASE_URL and move on. No Supabase or WebSocket tests.
-Do not skip steps.
-```
+## Connect a screen
 
-That wizard mirrors Replit Q1–Q3. Media alternative to Cloudinary is **Lovable Cloud Storage**
-(public bucket `tomorrowos-uploads`) instead of Replit Object Storage. The TV-facing CMS
-must still run on a **Node host** (Railway / Render / Fly, or Vercel Fluid via `VERCEL_SETUP.md`) —
-Lovable Cloud Publish alone is not a WebSocket CMS.
+Your CMS is running. This is what happens next, in order.
 
-### Vercel guided setup
+1. **Deploy the CMS to a public HTTPS address** (or tunnel for local tests). Screens must reach it from their network.
+2. **Get a player package** for your platform (see below and [`PLAYER_INSTALL.md`](./PLAYER_INSTALL.md)).  
+   Note: `npx tomorrowos build --platform …` is still a **placeholder** in this package �?packaging lives in the player repos / prebuilt downloads, not in the CLI yet.
+3. **Install the player on the panel.**
+4. **Pair.** The player shows a 6-character code. Enter it in the Control Panel. The device appears in your device list.
+5. **Publish content.** Assign playlists / push a content policy. The screen updates without reloading the app.
 
-In Vercel Agent (or any AI setup prompt), paste:
+### Samsung Tizen
 
-```text
-Follow @tomorrowos/sdk VERCEL_SETUP.md and set up my TomorrowOS CMS.
-IF any step contradicts Vercel, adapt to settings that Vercel can accept.
-```
+Supported target: **Tizen 6.5+** commercial displays (see Control Panel captions and [`PLAYER_INSTALL.md`](./PLAYER_INSTALL.md)).
 
-That wizard asks: database (**Supabase** → **Neon** → SQLite demo), media (**Cloudinary** → **Vercel Blob** → local),
-branding (manual fields or **website URL → `brand.json` only**, no login unless asked). Preview may use a thin **Next.js reverse proxy**;
-**Publish stays a Fluid Vercel Function** (`api/index.ts` + `export default server`, WebSockets per Vercel docs). Cloudinary uses **one Env popup** (all fields).
-Neon/Supabase: agent auto-sets `TOMORROWOS_STORE` + `DATABASE_SSL`. Sets `cms.hostingTarget` to `"vercel"`.
+**Fastest path for many setups �?URL Launcher / prebuilt package**
 
-### Replit upgrade (existing CMS)
+- From a running Control Panel, use **Download Players �?Samsung**, or fetch the published Tizen package from TomorrowOS distribution (`https://tmr.sh/app/tizen/…`).
+- Or host / sideload a `.wgt` as described in [`PLAYER_INSTALL.md`](./PLAYER_INSTALL.md).
 
-In Replit Agent, paste:
+On the panel, enter the CMS HTTPS URL (or the player package URL your install path requires). The player shows a pairing code.
 
-```text
-Follow @tomorrowos/sdk REPLIT_UPGRADE.md to upgrade my CMS with the latest SDK.
-```
+Signed packages need a Samsung distributor certificate for production distribution. Unsigned / URL Launcher paths are fine for testing when your environment allows them.
 
-That protocol installs `@tomorrowos/sdk@latest`, backs up panel/server files,
-diffs `cms-starter` templates (merge — never blind overwrite), and must **not**
-run `init` / delete `data/` or `public/uploads/`.
+### BrightSign
 
-To switch to Supabase/Postgres manually, edit `.env` / Secrets:
+Supported target: **Series 5 / 6** (as labeled in the Control Panel). Older series may work but should be validated on your hardware before fleet rollout.
+
+**Recommended download path**
+
+1. Open your live CMS Control Panel �?**Download Players �?BrightSign**.
+2. That hits `GET /players/brightsign.zip` on *this* CMS.
+3. The SDK fetches the mother zip and rewrites `config.js` so:
+
+   ```js
+   cmsEndpoint: "https://your-cms-host/"
+   ```
+
+   matches the CMS you downloaded from (for example `https://testcms2.replit.app/`).
+
+4. Unzip, copy the **contents** to a microSD card (files at the card root, including `autorun.brs` and `config.js`).
+5. Insert the card and power on. Pair with the on-screen code.
+
+Override the mother zip URL with `TOMORROWOS_BRIGHTSIGN_ZIP_URL` if you host your own package.
+
+### Coming soon
+
+Android, LG webOS, and Windows are on the roadmap. They are not validated for production in this SDK release.
+
+If you are building for one of those platforms later: build your CMS against the same server API now. Server-side code does not need to change when a new player package lands �?only the installable player does.
+
+---
+
+## Platform support
+
+| Platform | Status | Install |
+|---|---|---|
+| Samsung Tizen 6.5+ | V1 supported | Control Panel download / `.wgt` / URL Launcher �?see `PLAYER_INSTALL.md` |
+| BrightSign Series 5, 6 | V1 supported | Control Panel `GET /players/brightsign.zip` �?microSD autorun |
+| BrightSign older series | Validate on hardware | Same autorun zip flow |
+| Android | Roadmap | �?|
+| LG webOS | Roadmap | �?|
+| Windows | Roadmap | �?|
+
+Treat a platform as production-ready only after you have validated it on your panels.
+
+---
+
+## Configuration
+
+### Database
+
+SQLite by default (no configuration required for the starter). To switch:
 
 ```bash
 TOMORROWOS_STORE=supabase
@@ -127,11 +297,11 @@ DATABASE_SSL=true
 # DATABASE_URL=...   # optional fallback outside Replit
 ```
 
-For throwaway demos/tests, set `TOMORROWOS_STORE=memory`. The generated starter
-includes its own `README.md` beside `server.ts` with database selection,
-migration, and custom `TomorrowOSStore` examples.
+Supported store drivers: `sqlite`, `postgres`, `supabase`, `memory`.
 
-Migrate database records between supported stores:
+Use `memory` for throwaway demos only �?nothing survives a restart.
+
+### Migrating between stores
 
 ```bash
 npx tomorrowos migrate \
@@ -141,83 +311,118 @@ npx tomorrowos migrate \
   --to-database-url "$DATABASE_URL"
 ```
 
-The migrate command supports `sqlite`, `postgres`, and `supabase` in either
-direction. It migrates TomorrowOS database records only; copy `public/uploads`
-or object-storage media separately.
+Works in either direction across `sqlite`, `postgres`, and `supabase`. It moves database records only �?copy `public/uploads` or object-storage / Cloudinary media separately.
 
-Build a player (placeholder in current SDK — see `PLAYER_INSTALL.md` for platform tooling):
+### Media
 
-```bash
-npx tomorrowos build --platform tizen
+- **Local disk:** small files may use `POST /media/upload`. Larger files use **chunked upload** (`/media/upload-init` �?`/media/upload-chunk` �?`/media/upload-complete`).
+- **Replit Object Storage:** set `TOMORROWOS_MEDIA=replit-object-storage` (auto-preferred on Replit when Cloudinary is unset). Uses `@replit/object-storage`; URLs stay `/uploads/...` and are served from the bucket after Republish. Same upload HTTP routes as local.
+- **Cloudinary:** set `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` (optional `CLOUDINARY_FOLDER`). The Control Panel uses **browser �?Cloudinary** direct upload (`/media/upload-sign` + `/media/register`) when Cloudinary is configured.
+- **Vercel Blob:** set `BLOB_READ_WRITE_TOKEN` and `TOMORROWOS_MEDIA=vercel-blob` (token alone also auto-enables Blob when Cloudinary is unset). SDK uploads via `@vercel/blob` `put()`; asset URLs are absolute `https://*.public.blob.vercel-storage.com/...`.
+
+Cloudinary account plans still enforce their own max file sizes (for example Free plan video caps).
+
+### Branding
+
+Pass a brand object to the constructor (usually loaded from `brand.json`):
+
+```ts
+const tomorrowos = new TomorrowOS({ brand, store });
 ```
 
----
+It is served at `GET /brand.json` on the same host as `listen`. Players fetch it for colours, logos, and display defaults.
 
-## Quick architecture
+Validate against [`brand.schema.json`](./brand.schema.json). A complete example is in [`brand.example.json`](./brand.example.json).
+
+### Content policy and scheduling
 
 ```
-  ┌─────────────────┐         WebSocket         ┌─────────────────┐
-  │  Your CMS       │ ◄────────────────────────►│  TomorrowOS     │
-  │  (your server)  │                           │  Player on      │
-  │                 │                           │  screen         │
-  │  imports        │                           │                 │
-  │  @tomorrowos    │                           │  unified API    │
-  │  /sdk           │                           │  across OSes    │
-  └─────────────────┘                           └─────────────────┘
+POST /device/{deviceId}/content/set-policy
 ```
 
-TomorrowOS has no required cloud service. Your CMS talks to your screens over your network.
+```json
+{
+  "policy": {
+    "playlists": [],
+    "fallback": { "type": "brand" }
+  }
+}
+```
 
-**Player branding:** `GET /brand.json` returns the `brand` object passed to `new TomorrowOS({ brand })` (same host/port as `listen`). TomorrowOS players can fetch it to apply `backgroundColor`, logos, etc., without a separate static file server.
+Each playlist may include optional `schedule`, evaluated in **device local time**. The run window is **one continuous period**:
 
-**Content policy (`device.content.setPolicy`):** POST `/device/{deviceId}/content/set-policy` with `{ "policy": { "playlists": [...], "fallback": { "type": "brand" } } }`. Each playlist may include optional `schedule` (device local time):
+**from** `startDate` + `start` **�?until** `endDate` + `end` (until is exclusive).
 
 | Field | Format | Notes |
-|-------|--------|--------|
-| `startDate` / `endDate` | `YYYY-MM-DD` | Inclusive calendar range; omit either for open-ended |
-| `daysOfWeek` | `[0–6]` | `0` = Sunday … `6` = Saturday |
-| `start` / `end` | `HH:MM` | Daily window; supports overnight (e.g. `22:00`–`06:00`) |
+|---|---|---|
+| `startDate` / `endDate` | `YYYY-MM-DD` | Combined with `start` / `end`; omit bounds for open-ended |
+| `start` / `end` | `HH:mm` | Clock times on those dates |
 
-All provided constraints must match for the playlist to play. See `templates/cms-starter/policy.example.json`.
+This is **not** a daily-repeat schedule inside a date range. Leave schedule empty for always-on. Example shape: [`templates/cms-starter/policy.example.json`](./templates/cms-starter/policy.example.json) (ignore legacy `daysOfWeek` if present).
 
 ---
 
-## Supported platforms (roadmap)
+## Troubleshooting
 
-| Platform          | Status     | Player format |
-|-------------------|------------|---------------|
-| Samsung Tizen     | V1 target  | `.wgt`        |
-| BrightSign        | V1 target  | autorun zip   |
-| Others            | See docs   | varies        |
+**Screen won't pair.**  
+The player must reach your CMS. Confirm a public HTTPS (or reachable tunnel) URL, DNS, firewall, and that the panel has network access. A CMS only on `localhost` will not pair from a real display.
 
-See `PLAYER_INSTALL.md` for installation notes.
+**Paired, but the screen is black (BrightSign).**  
+Common causes: media the player cannot decode (codec / profile / unexpected tracks), or HTML video surface alpha / HTML widget timing in `autorun.brs`. Re-encode to a supported profile and confirm `config.js` points at the correct CMS. Check player logs on the device.
+
+**Paired, but the screen is black (other).**  
+Fetch `GET /brand.json` from the panel’s network. A live WebSocket with a black screen usually means no playable policy item �?check published playlists, absolute media URLs, and fallback.
+
+**Media 404s on the screen but loads in your browser.**  
+Policy URLs must be absolute and reachable from the screen. Relative paths or hosts only visible on your laptop will fail on the panel.
+
+**Upload fails with HTTP 413 on Replit (or similar hosts).**  
+Use `@tomorrowos/sdk` Control Panel / templates: non-Cloudinary uploads over ~2MB go through **chunked** `/media/upload-chunk`. On Replit, set `TOMORROWOS_MEDIA=replit-object-storage` (or rely on auto-detect) so files land in App Storage. On Vercel Blob, set `TOMORROWOS_MEDIA=vercel-blob` + `BLOB_READ_WRITE_TOKEN` so proxy/chunked complete stores absolute Blob URLs. With Cloudinary configured, the panel uses browser direct upload instead.
+
+**BrightSign zip has empty `cmsEndpoint`.**  
+You downloaded the mother zip from a static CDN instead of **this** CMS’s `/players/brightsign.zip`. Use Control Panel �?Download Players �?BrightSign on the deployed CMS.
+
+**WebSocket disconnects on a serverless host.**  
+Most serverless platforms terminate idle connections. Vercel requires Fluid compute. Prefer a long-lived Node host (Railway, Render, Fly, Replit) if your platform cannot hold sockets.
+
+**Database changes don't persist.**  
+You are probably on `TOMORROWOS_STORE=memory`. Switch to `sqlite` or Postgres/Supabase.
+
+---
+
+## Getting help
+
+- **Package docs:** the Markdown files listed below ship inside `@tomorrowos/sdk`
+- **npm:** [https://www.npmjs.com/package/@tomorrowos/sdk](https://www.npmjs.com/package/@tomorrowos/sdk)
+
+If something in this README doesn't match what the package actually does, treat that as a bug and report it �?documentation drift matters as much as a code defect.
 
 ---
 
 ## Documentation in this package
 
 | File | Purpose |
-|------|---------|
-| `LLM_PROMPT.md` | Five-question elicitation for LLMs |
-| `REPLIT_SETUP.md` | Replit Agent guided CMS setup |
-| `LOVABLE_SETUP.md` | Lovable Agent guided CMS setup (Node host + Lovable Cloud Storage) |
-| `VERCEL_SETUP.md` | Vercel / v0 guided CMS setup (configure after each answer) |
-| `VERCEL_QUESTIONS.md` | Verbatim Q1–Q3 text Agents must paste (do not paraphrase) |
-| `REPLIT_UPGRADE.md` | Replit Agent upgrade to latest SDK (no init) |
-| `BUILD_GUARDRAILS.md` | Mandatory CMS components |
-| `PLAYER_INSTALL.md` | Player build / install / pairing |
-| `brand.schema.json` | JSON Schema for `brand.json` |
-| `brand.example.json` | Full example `brand.json` |
-| `templates/cms-starter/` | Minimal Node + TypeScript server seed |
-| `templates/cms-starter/policy.example.json` | Example `setPolicy` payload with date schedule |
-| `templates/style-tokens/` | CSS tokens and UI pattern notes |
+|---|---|
+| [`PLAYER_INSTALL.md`](./PLAYER_INSTALL.md) | Player install and pairing notes |
+| [`brand.schema.json`](./brand.schema.json) | JSON Schema for `brand.json` |
+| [`brand.example.json`](./brand.example.json) | Complete example `brand.json` |
+| [`REPLIT_SETUP.md`](./REPLIT_SETUP.md) | Replit Agent guided setup |
+| [`REPLIT_UPGRADE.md`](./REPLIT_UPGRADE.md) | Upgrading an existing Replit CMS |
+| [`VERCEL_SETUP.md`](./VERCEL_SETUP.md) | Vercel / v0 guided setup |
+| [`VERCEL_QUESTIONS.md`](./VERCEL_QUESTIONS.md) | Verbatim Q1–Q3 text for Vercel agents |
+| [`VERCEL_UPGRADE.md`](./VERCEL_UPGRADE.md) | Upgrading an existing Vercel / v0 CMS |
+| [`templates/cms-starter/`](./templates/cms-starter/) | Minimal Node + TypeScript server seed |
+| [`templates/cms-starter-v0/`](./templates/cms-starter-v0/) | Vercel / v0 starter (Fluid + cms-panel) |
+| [`templates/style-tokens/`](./templates/style-tokens/) | CSS tokens and UI pattern notes |
 
 ---
 
 ## License
 
-Apache 2.0.
+Apache 2.0 (see `license` in `package.json`).
+
+You can use TomorrowOS commercially, modify it, and build closed-source products on top of it. You can ship a proprietary CMS built on this SDK and sell it under your own brand. You do not owe a fee, a licence, or a mention.
 
 ## Protocol version
 
-Wire protocol `1.0` (see TomorrowOS specification).
+Wire protocol **1.0** (see `protocolVersion` in [`brand.example.json`](./brand.example.json) and the TomorrowOS player/CMS contract).

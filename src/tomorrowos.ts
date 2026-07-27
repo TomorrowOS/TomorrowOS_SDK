@@ -4,6 +4,7 @@ import fs from "fs/promises";
 import http from "http";
 import path from "path";
 import type { Duplex } from "stream";
+import { fileURLToPath } from "url";
 import { WebSocket, WebSocketServer } from "ws";
 
 import {
@@ -29,14 +30,60 @@ import {
   syncProjectAssetsToStaticRoot
 } from "./brand-assets.js";
 import {
+  createSignedUploadParams,
   deleteCloudinaryAsset,
+  fetchCloudinaryResource,
   resolveCloudinaryConfig,
   uploadBufferToCloudinary
 } from "./cloudinary-storage.js";
+import {
+  isVercelBlobConfigured,
+  resolveVercelBlobMode,
+  resolveVercelBlobToken,
+  uploadBufferToVercelBlob
+} from "./vercel-blob-storage.js";
 import { probeVideoDurationMs } from "./media-probe.js";
-import { contentHashHex, storeUploadIfNeeded } from "./upload-storage.js";
+import {
+  assembleChunkedUpload,
+  cleanupChunkedUpload,
+  cleanupStaleChunkedUploads,
+  initChunkedUpload,
+  MEDIA_UPLOAD_CHUNK_BYTES,
+  storeChunkedUploadPart
+} from "./chunked-upload.js";
+import {
+  buildBrightSignZipWithCmsEndpoint,
+  resolveRequestCmsOrigin
+} from "./player-zip.js";
+import {
+  buildContentAddressedNameFromHash,
+  contentHashHex,
+  storeUploadIfNeeded
+} from "./upload-storage.js";
+import {
+  getReplitObjectStorageClient,
+  resolveReplitObjectStorageMode,
+  uploadsObjectKey
+} from "./replit-object-storage.js";
 import { detectPrimaryLanIpv4 } from "./lan-address.js";
 import { buildServerStatus } from "./server-status.js";
+
+/** Mark offline if no device.ping within this window (power-loss / half-open TCP). */
+const DEVICE_HEARTBEAT_TIMEOUT_MS = 30_000;
+const DEVICE_HEARTBEAT_SWEEP_MS = 10_000;
+
+function sdkPackageRoot(): string {
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+}
+
+/** Project methods.js without chunked upload still hits host 413 on large files. */
+function methodsJsSupportsChunkedUpload(source: string): boolean {
+  return (
+    source.includes("uploadViaChunkedProxy") &&
+    source.includes("/media/upload-init")
+  );
+}
+
 export type {
   ConnectorState,
   ConnectorStatus,
@@ -345,10 +392,13 @@ function isAllowedWebSocketPath(pathname: string, allowed: Set<string>): boolean
   return allowed.has(trimmed) || allowed.has(`${trimmed}/`);
 }
 
-const MAX_MEDIA_UPLOAD_BYTES = 100 * 1024 * 1024;
+/** JSON API bodies stay capped; media uploads have no SDK size cap. */
+const MAX_JSON_BODY_BYTES = 2 * 1024 * 1024;
+/** `null` = no limit (host/Cloudinary may still enforce their own caps). */
+const MAX_MEDIA_UPLOAD_BYTES: number | null = null;
 
 async function readJsonBody(req: http.IncomingMessage): Promise<unknown> {
-  const buf = await readRawBody(req, MAX_MEDIA_UPLOAD_BYTES);
+  const buf = await readRawBody(req, MAX_JSON_BODY_BYTES);
   const raw = buf.toString("utf8");
   if (!raw.trim()) return {};
   try {
@@ -360,14 +410,14 @@ async function readJsonBody(req: http.IncomingMessage): Promise<unknown> {
 
 async function readRawBody(
   req: http.IncomingMessage,
-  maxBytes: number
+  maxBytes: number | null
 ): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let total = 0;
   for await (const chunk of req) {
     const buf = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
     total += buf.length;
-    if (total > maxBytes) {
+    if (maxBytes != null && maxBytes > 0 && total > maxBytes) {
       throw new Error(`Body too large (max ${maxBytes} bytes)`);
     }
     chunks.push(buf);
@@ -426,6 +476,9 @@ export class TomorrowOS extends EventEmitter {
   private readonly devices = new Map<string, DeviceSocket>();
   private readonly pendingDeviceMeta = new Map<string, DeviceHelloMeta>();
   private readonly deviceLogs = new Map<string, DeviceLogEntry[]>();
+  /** Last device.ping (or bind) time — used to drop half-open sockets after power loss. */
+  private readonly deviceLastHeartbeatMs = new Map<string, number>();
+  private heartbeatSweepTimer: ReturnType<typeof setInterval> | null = null;
   private httpServer: http.Server | null = null;
   private wss: WebSocketServer | null = null;
   private staticRoot: string | null = null;
@@ -859,7 +912,42 @@ export class TomorrowOS extends EventEmitter {
     if (ws.readyState !== WebSocket.OPEN) return false;
     ws.deviceId = deviceId;
     this.devices.set(deviceId, ws);
+    this.touchDeviceHeartbeat(deviceId);
     return true;
+  }
+
+  private touchDeviceHeartbeat(deviceId: string): void {
+    const id = String(deviceId || "").trim();
+    if (!id) return;
+    this.deviceLastHeartbeatMs.set(id, Date.now());
+  }
+
+  private startDeviceHeartbeatSweep(): void {
+    if (this.heartbeatSweepTimer) return;
+    this.heartbeatSweepTimer = setInterval(() => {
+      this.sweepStaleDeviceHeartbeats();
+    }, DEVICE_HEARTBEAT_SWEEP_MS);
+    // Unref so the timer does not keep serverless/local processes alive alone.
+    const timer = this.heartbeatSweepTimer as NodeJS.Timeout & { unref?: () => void };
+    if (typeof timer.unref === "function") timer.unref();
+  }
+
+  private sweepStaleDeviceHeartbeats(): void {
+    const now = Date.now();
+    for (const [deviceId, ws] of this.devices) {
+      if (ws.readyState !== WebSocket.OPEN) continue;
+      const last = this.deviceLastHeartbeatMs.get(deviceId);
+      // Not yet touched (should be rare) — give a full timeout window from now.
+      if (last == null) {
+        this.touchDeviceHeartbeat(deviceId);
+        continue;
+      }
+      if (now - last < DEVICE_HEARTBEAT_TIMEOUT_MS) continue;
+      console.warn(
+        `[TomorrowOS] device heartbeat timeout (${DEVICE_HEARTBEAT_TIMEOUT_MS}ms): ${deviceId}`
+      );
+      this.forceDeviceOffline(deviceId);
+    }
   }
 
   /** Wait briefly for the device WebSocket to appear (first-pair hello races). */
@@ -1029,6 +1117,7 @@ export class TomorrowOS extends EventEmitter {
         this.devices.delete(deviceId);
       }
     }
+    this.deviceLastHeartbeatMs.delete(deviceId);
     void this.touchPairedOffline(deviceId);
     this.emit("device.offline", {
       deviceId,
@@ -1181,6 +1270,7 @@ export class TomorrowOS extends EventEmitter {
       this.staticIndexFile = idx;
       const uploadsDir = path.join(path.resolve(this.staticRoot), "uploads");
       void fs.mkdir(uploadsDir, { recursive: true });
+      void cleanupStaleChunkedUploads(this.staticRoot).catch(() => undefined);
       void this.refreshResolvedBrandLogo();
     } else {
       this.staticIndexFile = "index.html";
@@ -1216,6 +1306,7 @@ export class TomorrowOS extends EventEmitter {
     });
 
     this.serverStartedAt = new Date().toISOString();
+    this.startDeviceHeartbeatSweep();
 
     const onVercel = Boolean(process.env.VERCEL);
     const shouldListen = options.autoListen ?? !onVercel;
@@ -1247,6 +1338,22 @@ export class TomorrowOS extends EventEmitter {
     }
 
     try {
+      const declaredLength = Number(req.headers["content-length"]);
+      if (
+        Number.isFinite(declaredLength) &&
+        declaredLength > MEDIA_UPLOAD_CHUNK_BYTES
+      ) {
+        // Avoid buffering a huge body that many hosts (e.g. Replit) reject with 413.
+        req.resume();
+        sendJson(res, 413, {
+          status: "failed",
+          code: "USE_CHUNKED",
+          error:
+            "File too large for single-request upload. Soft-refresh the Control Panel (SDK serves chunked methods.js) or copy templates/.../methods.js, then retry."
+        });
+        return;
+      }
+
       const body = await readRawBody(req, MAX_MEDIA_UPLOAD_BYTES);
       if (body.length === 0) {
         sendJson(res, 400, { status: "failed", error: "Empty upload body" });
@@ -1284,6 +1391,381 @@ export class TomorrowOS extends EventEmitter {
     }
   }
 
+  private async handleMediaUploadSign(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    url: URL
+  ): Promise<void> {
+    const cloudinaryConfig = resolveCloudinaryConfig();
+    if (!cloudinaryConfig) {
+      sendJson(res, 404, {
+        status: "failed",
+        error: "Cloudinary is not configured"
+      });
+      return;
+    }
+
+    const rawName = url.searchParams.get("filename") || "upload";
+    const safeName = sanitizeUploadFilename(rawName);
+    const publicId = randomUUID().replace(/-/g, "");
+    const signed = createSignedUploadParams(cloudinaryConfig, {
+      publicId,
+      filename: safeName
+    });
+
+    sendJson(res, 200, {
+      status: "success",
+      mode: "cloudinary-direct",
+      ...signed
+    });
+  }
+
+  private async handleMediaRegister(
+    req: http.IncomingMessage,
+    res: http.ServerResponse
+  ): Promise<void> {
+    const cloudinaryConfig = resolveCloudinaryConfig();
+    if (!cloudinaryConfig) {
+      sendJson(res, 400, {
+        status: "failed",
+        error: "Cloudinary is not configured"
+      });
+      return;
+    }
+
+    try {
+      const body = (await readJsonBody(req)) as {
+        publicId?: string;
+        resourceType?: string;
+        originalFilename?: string;
+        mimeType?: string;
+      };
+      const publicId = String(body.publicId || "").trim();
+      if (!publicId) {
+        sendJson(res, 400, { status: "failed", error: "publicId is required" });
+        return;
+      }
+
+      const safeName = sanitizeUploadFilename(
+        body.originalFilename || path.basename(publicId) || "upload"
+      );
+      const hintedType = String(body.resourceType || "auto").trim() || "auto";
+      const remote = await fetchCloudinaryResource(
+        cloudinaryConfig,
+        publicId,
+        hintedType
+      );
+
+      const sha256 = remote.etag
+        ? `cloudinary-etag:${remote.etag}`
+        : `cloudinary:${remote.publicId}`;
+      const existing = await this.store.getUploadedAssetBySha256(sha256);
+      if (existing && isRemoteUploadedAssetUrl(existing.url)) {
+        const payload: Record<string, unknown> = {
+          status: "success",
+          url: existing.url,
+          assetId: existing.id,
+          filename: safeName,
+          size: existing.bytes,
+          contentHash: existing.sha256,
+          deduplicated: true
+        };
+        if (remote.durationSec != null) {
+          payload.durationMs = Math.round(remote.durationSec * 1000);
+        }
+        sendJson(res, 200, payload);
+        return;
+      }
+
+      const now = new Date().toISOString();
+      const mimeType =
+        typeof body.mimeType === "string" ? body.mimeType : undefined;
+      const asset: UploadedAssetRecord = {
+        id: randomUUID(),
+        sha256,
+        storageKey: remote.publicId,
+        url: remote.secureUrl,
+        originalFilename: safeName,
+        mimeType,
+        resourceType:
+          remote.resourceType || inferResourceType(mimeType, safeName),
+        bytes: remote.bytes,
+        createdAt: now,
+        updatedAt: now
+      };
+      await this.store.setUploadedAsset(asset);
+
+      const payload: Record<string, unknown> = {
+        status: "success",
+        url: asset.url,
+        assetId: asset.id,
+        filename: safeName,
+        size: asset.bytes,
+        contentHash: asset.sha256,
+        deduplicated: false
+      };
+      if (remote.durationSec != null) {
+        payload.durationMs = Math.round(remote.durationSec * 1000);
+      }
+      sendJson(res, 200, payload);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Register failed";
+      sendJson(res, 400, { status: "failed", error: msg });
+    }
+  }
+
+  private async handleMediaUploadInit(
+    req: http.IncomingMessage,
+    res: http.ServerResponse
+  ): Promise<void> {
+    if (!this.staticRoot) {
+      sendJson(res, 400, { status: "failed", error: "staticRoot is not configured" });
+      return;
+    }
+    try {
+      const body = (await readJsonBody(req)) as {
+        filename?: string;
+        size?: number;
+        mimeType?: string;
+      };
+      const safeName = sanitizeUploadFilename(body.filename || "upload");
+      const mimeType =
+        typeof body.mimeType === "string" ? body.mimeType : undefined;
+      const meta = await initChunkedUpload(this.staticRoot, {
+        filename: safeName,
+        size: Number(body.size),
+        mimeType
+      });
+      sendJson(res, 200, {
+        status: "success",
+        mode: "chunked",
+        uploadId: meta.uploadId,
+        chunkSize: meta.chunkSize,
+        totalChunks: meta.totalChunks
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Upload init failed";
+      sendJson(res, 400, { status: "failed", error: msg });
+    }
+  }
+
+  private async handleMediaUploadChunk(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    url: URL
+  ): Promise<void> {
+    if (!this.staticRoot) {
+      sendJson(res, 400, { status: "failed", error: "staticRoot is not configured" });
+      return;
+    }
+    try {
+      const uploadId = String(url.searchParams.get("uploadId") || "").trim();
+      const index = Number(url.searchParams.get("index"));
+      const body = await readRawBody(req, MEDIA_UPLOAD_CHUNK_BYTES + 64 * 1024);
+      if (body.length === 0) {
+        sendJson(res, 400, { status: "failed", error: "Empty chunk body" });
+        return;
+      }
+      const meta = await storeChunkedUploadPart(
+        this.staticRoot,
+        uploadId,
+        index,
+        body
+      );
+      sendJson(res, 200, {
+        status: "success",
+        uploadId: meta.uploadId,
+        index,
+        received: meta.received.length,
+        totalChunks: meta.totalChunks
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Chunk upload failed";
+      sendJson(res, 400, { status: "failed", error: msg });
+    }
+  }
+
+  private async handleMediaUploadComplete(
+    req: http.IncomingMessage,
+    res: http.ServerResponse
+  ): Promise<void> {
+    if (!this.staticRoot) {
+      sendJson(res, 400, { status: "failed", error: "staticRoot is not configured" });
+      return;
+    }
+
+    let uploadId = "";
+    try {
+      const body = (await readJsonBody(req)) as { uploadId?: string };
+      uploadId = String(body.uploadId || "").trim();
+      const assembled = await assembleChunkedUpload(this.staticRoot, uploadId);
+      const safeName = sanitizeUploadFilename(assembled.meta.filename);
+      const mimeType = assembled.meta.mimeType;
+      const { asset, deduplicated } = await this.storeLocalAssembledUpload(
+        assembled.filePath,
+        assembled.sha256,
+        assembled.bytes,
+        safeName,
+        mimeType
+      );
+
+      let durationMs: number | null = null;
+      if (assembled.bytes <= 64 * 1024 * 1024) {
+        try {
+          const probeBuf = await fs.readFile(assembled.filePath);
+          durationMs = probeVideoDurationMs(probeBuf, safeName);
+        } catch {
+          durationMs = null;
+        }
+      }
+
+      const payload: Record<string, unknown> = {
+        status: "success",
+        url: asset.url,
+        assetId: asset.id,
+        filename: isRemoteUploadedAssetUrl(asset.url) ? safeName : asset.storageKey,
+        size: asset.bytes ?? assembled.bytes,
+        contentHash: asset.sha256,
+        deduplicated
+      };
+      if (durationMs != null) payload.durationMs = durationMs;
+
+      sendJson(res, 200, payload);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Upload complete failed";
+      sendJson(res, 400, { status: "failed", error: msg });
+    } finally {
+      if (uploadId && this.staticRoot) {
+        void cleanupChunkedUpload(this.staticRoot, uploadId).catch(() => undefined);
+      }
+    }
+  }
+
+  private async storeLocalAssembledUpload(
+    assembledPath: string,
+    sha256: string,
+    bytes: number,
+    safeName: string,
+    mimeType?: string
+  ): Promise<{ asset: UploadedAssetRecord; deduplicated: boolean }> {
+    const body = await fs.readFile(assembledPath);
+    return this.storeUploadedMediaAsset(body, safeName, mimeType);
+  }
+
+  private async writeLocalUploadCache(
+    storedName: string,
+    body: Buffer
+  ): Promise<void> {
+    if (!this.staticRoot) return;
+    try {
+      const uploadsDir = path.join(path.resolve(this.staticRoot), "uploads");
+      await fs.mkdir(uploadsDir, { recursive: true });
+      await fs.writeFile(path.join(uploadsDir, storedName), body);
+    } catch (err) {
+      console.warn("[TomorrowOS] local upload cache write failed:", err);
+    }
+  }
+
+  private async persistRelativeUpload(
+    body: Buffer,
+    sha256: string,
+    safeName: string,
+    mimeType: string | undefined,
+    existing: UploadedAssetRecord | undefined,
+    resourceType: string
+  ): Promise<{ asset: UploadedAssetRecord; deduplicated: boolean }> {
+    const storedName = buildContentAddressedNameFromHash(sha256, safeName);
+    const objectKey = uploadsObjectKey(storedName);
+    const now = new Date().toISOString();
+    const mode = resolveReplitObjectStorageMode();
+
+    let ros = null as Awaited<ReturnType<typeof getReplitObjectStorageClient>>;
+    try {
+      ros = await getReplitObjectStorageClient();
+    } catch (err) {
+      if (mode === "required") throw err;
+      console.warn("[TomorrowOS] Replit Object Storage init failed:", err);
+    }
+
+    if (ros) {
+      try {
+        if (existing?.storageKey === storedName && (await ros.exists(objectKey))) {
+          return { asset: existing, deduplicated: true };
+        }
+        if (!existing && (await ros.exists(objectKey))) {
+          const asset: UploadedAssetRecord = {
+            id: randomUUID(),
+            sha256,
+            storageKey: storedName,
+            url: `/uploads/${storedName}`,
+            originalFilename: safeName,
+            mimeType,
+            resourceType,
+            bytes: body.length,
+            createdAt: now,
+            updatedAt: now
+          };
+          await this.store.setUploadedAsset(asset);
+          void this.writeLocalUploadCache(storedName, body);
+          return { asset, deduplicated: true };
+        }
+
+        await ros.uploadBytes(objectKey, body);
+        void this.writeLocalUploadCache(storedName, body);
+
+        const asset: UploadedAssetRecord = {
+          id: existing?.id ?? randomUUID(),
+          sha256,
+          storageKey: storedName,
+          url: `/uploads/${storedName}`,
+          originalFilename: safeName,
+          mimeType,
+          resourceType,
+          bytes: body.length,
+          createdAt: existing?.createdAt ?? now,
+          updatedAt: now
+        };
+        await this.store.setUploadedAsset(asset);
+        return { asset, deduplicated: false };
+      } catch (err) {
+        if (mode === "required") throw err;
+        console.warn(
+          "[TomorrowOS] Replit Object Storage upload failed; falling back to local disk:",
+          err
+        );
+      }
+    } else if (mode === "required") {
+      throw new Error(
+        "Replit Object Storage is required but no client is available"
+      );
+    }
+
+    if (!this.staticRoot) {
+      throw new Error("staticRoot is not configured");
+    }
+    const uploadsDir = path.join(path.resolve(this.staticRoot), "uploads");
+    await fs.mkdir(uploadsDir, { recursive: true });
+    const { storedName: localName, deduplicated } = await storeUploadIfNeeded(
+      uploadsDir,
+      body,
+      safeName
+    );
+    const asset: UploadedAssetRecord = {
+      id: existing?.id ?? randomUUID(),
+      sha256,
+      storageKey: localName,
+      url: `/uploads/${localName}`,
+      originalFilename: safeName,
+      mimeType,
+      resourceType,
+      bytes: body.length,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now
+    };
+    await this.store.setUploadedAsset(asset);
+    return { asset, deduplicated };
+  }
+
   private async storeUploadedMediaAsset(
     body: Buffer,
     safeName: string,
@@ -1309,7 +1791,19 @@ export class TomorrowOS extends EventEmitter {
           return { asset: existing, deduplicated: true };
         }
       } catch {
-        // Local file is missing; rewrite it below and update this asset record.
+        // Local file is missing; try Object Storage / rewrite below.
+      }
+
+      try {
+        const ros = await getReplitObjectStorageClient();
+        if (ros) {
+          const key = uploadsObjectKey(existing.storageKey);
+          if (await ros.exists(key)) {
+            return { asset: existing, deduplicated: true };
+          }
+        }
+      } catch {
+        // continue to rewrite
       }
     }
 
@@ -1338,27 +1832,55 @@ export class TomorrowOS extends EventEmitter {
       return { asset, deduplicated: false };
     }
 
-    const uploadsDir = path.join(path.resolve(this.staticRoot || "."), "uploads");
-    await fs.mkdir(uploadsDir, { recursive: true });
-    const { storedName, deduplicated } = await storeUploadIfNeeded(
-      uploadsDir,
+    const blobMode = resolveVercelBlobMode();
+    const blobToken = resolveVercelBlobToken();
+    if (blobMode !== "off") {
+      if (!blobToken) {
+        if (blobMode === "required") {
+          throw new Error(
+            "TOMORROWOS_MEDIA=vercel-blob requires BLOB_READ_WRITE_TOKEN. Link a Blob store to this Vercel project."
+          );
+        }
+      } else {
+        try {
+          const storedName = buildContentAddressedNameFromHash(sha256, safeName);
+          const uploaded = await uploadBufferToVercelBlob(body, {
+            pathname: `uploads/${storedName}`,
+            token: blobToken,
+            contentType: mimeType
+          });
+          const asset: UploadedAssetRecord = {
+            id: existing?.id ?? randomUUID(),
+            sha256,
+            storageKey: uploaded.pathname || storedName,
+            url: uploaded.url,
+            originalFilename: safeName,
+            mimeType,
+            resourceType,
+            bytes: body.length,
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now
+          };
+          await this.store.setUploadedAsset(asset);
+          return { asset, deduplicated: false };
+        } catch (err) {
+          if (blobMode === "required") throw err;
+          console.warn(
+            "[TomorrowOS] Vercel Blob upload failed; falling back:",
+            err
+          );
+        }
+      }
+    }
+
+    return this.persistRelativeUpload(
       body,
-      safeName
-    );
-    const asset: UploadedAssetRecord = {
-      id: existing?.id ?? randomUUID(),
       sha256,
-      storageKey: storedName,
-      url: `/uploads/${storedName}`,
-      originalFilename: safeName,
+      safeName,
       mimeType,
-      resourceType,
-      bytes: body.length,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now
-    };
-    await this.store.setUploadedAsset(asset);
-    return { asset, deduplicated };
+      existing,
+      resourceType
+    );
   }
 
   private getAssetIdsFromItems(items: PlaylistItemRecord[] | undefined): Set<string> {
@@ -1419,6 +1941,22 @@ export class TomorrowOS extends EventEmitter {
           asset.storageKey,
           asset.resourceType || "image"
         );
+      } else {
+        const objectKey = uploadsObjectKey(asset.storageKey);
+        try {
+          const ros = await getReplitObjectStorageClient();
+          if (ros) await ros.deleteObject(objectKey);
+        } catch (err) {
+          console.warn("[TomorrowOS] Object Storage asset delete failed:", err);
+        }
+        if (this.staticRoot) {
+          const localPath = path.join(
+            path.resolve(this.staticRoot),
+            "uploads",
+            asset.storageKey
+          );
+          await fs.rm(localPath, { force: true }).catch(() => undefined);
+        }
       }
 
       await this.store.deleteUploadedAsset(asset.id);
@@ -1468,9 +2006,34 @@ export class TomorrowOS extends EventEmitter {
     if (relativeToRoot.startsWith("..") || path.isAbsolute(relativeToRoot)) {
       return false;
     }
+    const relPosix = relativeToRoot.split(path.sep).join("/");
+    if (relPosix === ".upload-tmp" || relPosix.startsWith(".upload-tmp/")) {
+      return false;
+    }
 
     try {
-      const buf = await fs.readFile(filePath);
+      let buf = await fs.readFile(filePath);
+      const baseName = path.basename(rel).toLowerCase();
+      if (baseName === "methods.js") {
+        const text = buf.toString("utf8");
+        if (!methodsJsSupportsChunkedUpload(text)) {
+          const fallback = path.join(
+            sdkPackageRoot(),
+            "templates",
+            "cms-starter",
+            "public",
+            "methods.js"
+          );
+          try {
+            buf = await fs.readFile(fallback);
+            console.warn(
+              "[TomorrowOS] serving SDK methods.js with chunked uploads (project methods.js is outdated)"
+            );
+          } catch {
+            // keep project file
+          }
+        }
+      }
       const ext = path.extname(rel).toLowerCase();
       const types: Record<string, string> = {
         ".html": "text/html; charset=utf-8",
@@ -1482,13 +2045,58 @@ export class TomorrowOS extends EventEmitter {
         ".jpg": "image/jpeg",
         ".jpeg": "image/jpeg",
         ".webp": "image/webp",
-        ".gif": "image/gif"
+        ".gif": "image/gif",
+        ".mp4": "video/mp4",
+        ".webm": "video/webm",
+        ".mov": "video/quicktime",
+        ".m4v": "video/x-m4v"
       };
       const ctype = types[ext] ?? "application/octet-stream";
-      res.writeHead(200, { "Content-Type": ctype });
+      const headers: Record<string, string> = { "Content-Type": ctype };
+      if (baseName === "methods.js") {
+        headers["Cache-Control"] = "no-store";
+      }
+      res.writeHead(200, headers);
       res.end(buf);
       return true;
     } catch {
+      // After Republish, local uploads may be gone — serve from Replit Object Storage.
+      if (relPosix.startsWith("uploads/")) {
+        try {
+          const ros = await getReplitObjectStorageClient();
+          if (ros) {
+            const objectKey = uploadsObjectKey(relPosix.slice("uploads/".length));
+            const remote = await ros.downloadBytes(objectKey);
+            if (remote && remote.length > 0) {
+              void this.writeLocalUploadCache(
+                path.basename(relPosix),
+                remote
+              );
+              const ext = path.extname(rel).toLowerCase();
+              const types: Record<string, string> = {
+                ".png": "image/png",
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".webp": "image/webp",
+                ".gif": "image/gif",
+                ".svg": "image/svg+xml",
+                ".mp4": "video/mp4",
+                ".webm": "video/webm",
+                ".mov": "video/quicktime",
+                ".m4v": "video/x-m4v"
+              };
+              res.writeHead(200, {
+                "Content-Type": types[ext] ?? "application/octet-stream",
+                "Cache-Control": "public, max-age=31536000, immutable"
+              });
+              res.end(remote);
+              return true;
+            }
+          }
+        } catch (err) {
+          console.warn("[TomorrowOS] Object Storage serve failed:", err);
+        }
+      }
       return false;
     }
   }
@@ -1604,7 +2212,7 @@ export class TomorrowOS extends EventEmitter {
   }
 
   private async captureDeviceScreenshot(deviceId: string): Promise<DeviceScreenshotInfo> {
-    const result = await this.sendDeviceCommand(deviceId, "device.captureScreen", {});
+    const result = await this.sendDeviceCommand(deviceId, "device.telemetry.captureScreen", {});
     if (result.status === "failed") {
       throw new Error(String(result.error ?? "Screenshot failed"));
     }
@@ -1623,16 +2231,20 @@ export class TomorrowOS extends EventEmitter {
   ): Promise<void> {
     try {
       const url = new URL(req.url ?? "/", "http://localhost");
-      const pathname = url.pathname;
+      const method = String(req.method || "GET").toUpperCase();
+      let pathname = url.pathname || "/";
+      if (pathname.length > 1 && pathname.endsWith("/")) {
+        pathname = pathname.slice(0, -1);
+      }
 
       /** Same-origin brand for TomorrowOS players (e.g. GET /brand.json + applyBrand). */
-      if (req.method === "GET" && pathname === "/brand.json") {
+      if (method === "GET" && pathname === "/brand.json") {
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(this.brand));
         return;
       }
 
-      if (req.method === "GET" && pathname === "/status") {
+      if (method === "GET" && pathname === "/status") {
         const report = await buildServerStatus({
           store: this.store,
           staticRoot: this.staticRoot
@@ -1645,8 +2257,64 @@ export class TomorrowOS extends EventEmitter {
         return;
       }
 
-      if (req.method === "POST" && pathname === "/media/upload") {
+      if (method === "GET" && pathname === "/media/upload-capabilities") {
+        sendJson(res, 200, {
+          status: "success",
+          chunked: Boolean(this.staticRoot),
+          chunkSize: MEDIA_UPLOAD_CHUNK_BYTES,
+          cloudinary: Boolean(resolveCloudinaryConfig()),
+          vercelBlob: isVercelBlobConfigured()
+        });
+        return;
+      }
+
+      if (method === "POST" && pathname === "/media/upload") {
         await this.handleMediaUpload(req, res, url);
+        return;
+      }
+
+      if (method === "GET" && pathname === "/media/upload-sign") {
+        await this.handleMediaUploadSign(req, res, url);
+        return;
+      }
+
+      if (method === "POST" && pathname === "/media/register") {
+        await this.handleMediaRegister(req, res);
+        return;
+      }
+
+      if (method === "POST" && pathname === "/media/upload-init") {
+        await this.handleMediaUploadInit(req, res);
+        return;
+      }
+
+      if (method === "POST" && pathname === "/media/upload-chunk") {
+        await this.handleMediaUploadChunk(req, res, url);
+        return;
+      }
+
+      if (method === "POST" && pathname === "/media/upload-complete") {
+        await this.handleMediaUploadComplete(req, res);
+        return;
+      }
+
+      if (method === "GET" && pathname === "/players/brightsign.zip") {
+        try {
+          const cmsOrigin = resolveRequestCmsOrigin(req);
+          const zipBytes = await buildBrightSignZipWithCmsEndpoint(cmsOrigin);
+          res.writeHead(200, {
+            "Content-Type": "application/zip",
+            "Content-Length": String(zipBytes.byteLength),
+            "Content-Disposition":
+              'attachment; filename="TomorrowOS_BrightSign.zip"',
+            "Cache-Control": "no-store"
+          });
+          res.end(Buffer.from(zipBytes));
+        } catch (e) {
+          const msg =
+            e instanceof Error ? e.message : "BrightSign zip download failed";
+          sendJson(res, 502, { status: "failed", error: msg });
+        }
         return;
       }
 
@@ -2233,6 +2901,7 @@ export class TomorrowOS extends EventEmitter {
         );
         const deviceId = ws.deviceId;
         if (deviceId) {
+          this.touchDeviceHeartbeat(deviceId);
           const timestamp =
             typeof msg.timestamp === "string" && msg.timestamp.trim()
               ? msg.timestamp
@@ -2270,6 +2939,7 @@ export class TomorrowOS extends EventEmitter {
       if (this.devices.get(id) !== ws) return;
 
       this.devices.delete(id);
+      this.deviceLastHeartbeatMs.delete(id);
       void this.touchPairedOffline(id);
       this.emit("device.offline", {
         deviceId: id,

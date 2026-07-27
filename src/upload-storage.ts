@@ -5,7 +5,14 @@ import path from "path";
 /** Stable on-disk name: first 16 chars of SHA-256 + original safe filename. */
 export function buildContentAddressedName(body: Buffer, safeName: string): string {
   const hash = createHash("sha256").update(body).digest("hex");
-  return `${hash.slice(0, 16)}-${safeName}`;
+  return buildContentAddressedNameFromHash(hash, safeName);
+}
+
+export function buildContentAddressedNameFromHash(
+  sha256Hex: string,
+  safeName: string
+): string {
+  return `${String(sha256Hex).slice(0, 16)}-${safeName}`;
 }
 
 export function contentHashHex(body: Buffer): string {

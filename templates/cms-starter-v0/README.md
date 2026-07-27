@@ -13,7 +13,7 @@ This starter is for **Vercel Publish** and **v0**. It follows
 ## Scaffold
 
 ```bash
-npx @tomorrowos/sdk init my-cms --hosting v0
+npx @tomorrowos/sdk@latest init my-cms --hosting v0
 ```
 
 ## Local development
@@ -46,5 +46,5 @@ TV endpoint: `https://YOUR.vercel.app/` (players also try `/api` on `*.vercel.ap
 Use the default starter (unchanged Node listen, no `api/` Function):
 
 ```bash
-npx @tomorrowos/sdk init my-cms --hosting replit
+npx @tomorrowos/sdk@latest init my-cms --hosting replit
 ```

@@ -3,13 +3,14 @@
 > **This file is a contract for Vercel Agent / AI coding assistants setting up TomorrowOS on Vercel.**  
 > Follow it literally. Ask questions in order. Do not invent secrets. Prefer configuring **Vercel Environment Variables**, `.env` (non-secrets only), `brand.json`, and `server.ts` store wiring over inventing a custom CMS.
 >
-> **On Vercel, this file is the setup questionnaire** (not `REPLIT_SETUP.md`, not `LLM_PROMPT.md`).
+> **On Vercel, this file is the setup questionnaire** (not `REPLIT_SETUP.md`).
 >
-> Protocol id: `vercel-setup/1.9` — pairs with `@tomorrowos/sdk` **0.9.50+** (`templates/cms-starter-v0`, Fluid Functions WebSockets).
+> Protocol id: `vercel-setup/1.14` - pairs with `@tomorrowos/sdk` **0.9.69+** (`templates/cms-starter-v0`, Fluid Functions WebSockets).
 >
-> **Questions source of truth:** `VERCEL_QUESTIONS.md` ? Agents must **open that file and paste each Q block verbatim**. Do not paraphrase.  
-> **Copy questions verbatim from `VERCEL_QUESTIONS.md`.** Do not invent alternate Q2 options (no ?Supabase Storage?? no S3, no ?disable media?? no making Blob the recommended option).  
-> **`TOMORROWOS_STORE` and `DATABASE_SSL` are agent-only** ??set them automatically after Q1; never put them in a user-facing Env form for the customer to type.
+> **Questions source of truth:** `VERCEL_QUESTIONS.md` - Agents must **open that file and paste each Q block verbatim**. Do not paraphrase.  
+> **Q1/Q2 = choice questions. Q3 = form only:** open **all seven optional inputs at once**, then **HARD STOP and WAIT** for submit or "skip". Never auto-skip because fields are optional. Never ask a branding choice first. Never show only Name + Primary colour. Logo = **Upload** above **Logo URL**.  
+> **Copy questions verbatim from `VERCEL_QUESTIONS.md`.** Do not invent alternate Q2 options (no "Supabase Storage", no S3, no "disable media", no making Blob the recommended option).  
+> **`TOMORROWOS_STORE` and `DATABASE_SSL` are agent-only** - set them automatically after Q1; never put them in a user-facing Env form for the customer to type.
 
 ## NON-NEGOTIABLE VERCEL RUNTIME CONTRACT
 
@@ -33,20 +34,31 @@ These rules override any platform-generated recommendation that conflicts with t
 When a human pastes a prompt like this, **read this file and start Question 1 immediately**:
 
 ```text
-Follow @tomorrowos/sdk VERCEL_SETUP.md and set up my TomorrowOS CMS.
-First open VERCEL_QUESTIONS.md. For Q1, Q2, Q3: paste each question block VERBATIM (character-for-character). Do not rephrase options.
-Q2 must show Cloudinary (recommended) as option 1 ??never Blob-as-recommended, never S3, never Supabase Storage.
-After database choice, YOU set TOMORROWOS_STORE and DATABASE_SSL ??do not ask me to fill those.
-Do not use LLM_PROMPT.md or REPLIT_SETUP.md. No OpenAI/LLM API keys.
-Apply the NON-NEGOTIABLE VERCEL RUNTIME CONTRACT exactly: one TomorrowOS instance; no public/ Output Directory; Preview Next only under preview/; Publish through the Fluid Function; verify /status JSON, / Control Panel, and WebSocket 101; pair devices only with the Production URL.
+Follow @tomorrowos/sdk (an NPM package) VERCEL_SETUP.md and set up my TomorrowOS CMS from scratch.
+
+Open VERCEL_QUESTIONS.md first.
+For Q1, Q2, Q3: paste each question block VERBATIM. Do not rephrase options.
+For Q3: DO NOT ask a branding choice. Open one form with ALL SEVEN optional inputs at once, then HARD STOP and WAIT for my submit or "skip". Never auto-continue with defaults without my reply. Never only Name + Primary colour. Logo = Upload above Logo URL.
+After Q1 database choice, YOU set TOMORROWOS_STORE and DATABASE_SSL. Do not ask me to fill those.
+After Q2 media storage choice, YOU set TOMORROWOS_MEDIA. Do not ask me to fill those.
+Run: npx @tomorrowos/sdk@latest init . --hosting v0 --force
+Keep cms-starter-v0 layout.
+Apply the NON-NEGOTIABLE VERCEL RUNTIME CONTRACT exactly:
+one TomorrowOS instance only
+never create a second TomorrowOS in api/ws.ts
+never use public/ as Vercel Output Directory
+Preview Next only under preview/
+Publish must be the Fluid Function
+after deploy verify: GET /status ? JSON, GET / ? Control Panel, WebSocket on / or /api ? 101
+pair devices against the Production URL only
 ```
 
 Alternate triggers:
 
-- ?Set up TomorrowOS on Vercel using VERCEL_SETUP.md??
-- ?Configure my TomorrowOS CMS (Vercel wizard)??
+- ?Set up TomorrowOS on Vercel using VERCEL_SETUP.md?
+- ?Configure my TomorrowOS CMS (Vercel wizard)?
 
-When any of these fire, **ignore `REPLIT_SETUP.md` and `LLM_PROMPT.md`** for the Q&A phase (you may skim Replit docs only for shared SDK semantics).
+When any of these fire, **ignore `REPLIT_SETUP.md`** for the Q&A phase (you may skim Replit docs only for shared SDK semantics).
 
 ---
 
@@ -149,9 +161,9 @@ Ask **only** these questions, in **this exact order**. **Copy the ?Ask exactly??
 
 | Step | Section | When |
 |------|---------|------|
-| 1 | **Question 1** ??Database (Supabase ??Neon ??SQLite) | Always |
-| 2 | **Question 2** ??Media (**Cloudinary recommended** ??Vercel Blob ??local) | Always (after Q1) |
-| 3 | **Question 3** ??Brand / TomorrowOS look (`brand.json` only) | Always last |
+| 1 | **Question 1** ? Database (Supabase ? Neon) | Always |
+| 2 | **Question 2** ? Media (**Cloudinary recommended** ? Vercel Blob) | Always (after Q1) |
+| 3 | **Question 3** - Brand form (`brand.json` only; **not a choice** - open all 7 optional inputs at once) | Always last |
 
 **That is the complete list.** Do **not** ask how many screens / devices.
 
@@ -177,7 +189,7 @@ Ask **only** these questions, in **this exact order**. **Copy the ?Ask exactly??
 
 TomorrowOS pairing and Control Panel logic live in `@tomorrowos/sdk`. They do **not** call OpenAI.
 
-If the user **skips** a Question 2 option, do **not** invent a substitute question. Re-state Question 2 choices **verbatim**, or proceed with local uploads + warning ??never pivot to LLM keys or Supabase Storage.
+If the user **skips** a Question 2 option, do **not** invent a substitute question. Re-state Question 2 choices **verbatim** ? never pivot to LLM keys, Supabase Storage, or local disk uploads.
 
 If the user says ?just set it up, don?t ask questions,??respond:
 
@@ -189,14 +201,14 @@ Then ask **Question 1**.
 
 ## Hard rules
 
-1. **Open `VERCEL_QUESTIONS.md` first.** Paste Q1 ??configure ??paste Q2 ??configure ??paste Q3. Never paraphrase question options. Never use `LLM_PROMPT.md` or `REPLIT_SETUP.md` as the questionnaire. **Never** ask for OpenAI or other LLM API keys.
-2. **Question 2 options are fixed:** (1) Cloudinary **(recommended)**, (2) Vercel Blob, (3) local disk. Do not reorder; do not invent Supabase Storage / disable-uploads.
+1. **Open `VERCEL_QUESTIONS.md` first.** Paste Q1 ??configure ??paste Q2 ??configure ??paste Q3. Never paraphrase question options. Never use `REPLIT_SETUP.md` as the questionnaire. **Never** ask for OpenAI or other LLM API keys.
+2. **Question 2 options are fixed:** (1) Cloudinary **(recommended)**, (2) Vercel Blob. Do not reorder; do not invent Supabase Storage, local disk, or disable-uploads.
 3. **Cloudinary:** open **one** Vercel Env popup with **all** Cloudinary fields together. Do **not** quiz one credential at a time.
-4. **`TOMORROWOS_STORE` + `DATABASE_SSL` = agent-owned.** After Q1 choice (and URL if needed), set them yourself in Vercel Env Vars. **Never** include them as blank fields for the customer. Mapping: Supabase ??`TOMORROWOS_STORE=supabase` + `DATABASE_SSL=true`; Neon ??`TOMORROWOS_STORE=postgres` + `DATABASE_SSL=true`; SQLite ??`TOMORROWOS_STORE=sqlite` (no `DATABASE_SSL` required).
+4. **`TOMORROWOS_STORE` + `DATABASE_SSL` = agent-owned.** After Q1 choice (and URL if needed), set them yourself in Vercel Env Vars. **Never** include them as blank fields for the customer. Mapping: Supabase ? `TOMORROWOS_STORE=supabase` + `DATABASE_SSL=true`; Neon ? `TOMORROWOS_STORE=postgres` + `DATABASE_SSL=true`. **Do not offer SQLite as a questionnaire choice** ? it is ephemeral on Vercel and unsuitable for production.
 5. **Do not invent** Cloudinary credentials, database URLs, Vercel Blob tokens, brand colours, **or LLM API keys**.
 6. **Postgres env naming:** prefer **`SUPABASE_URL`** for Supabase; prefer **`DATABASE_URL`** for Neon.
 7. **Always prefer pooled connection strings** (Supabase Session pooler **6543**; Neon pooled host).
-8. **Prefer `npx @tomorrowos/sdk init --hosting v0`**. For Replit/Railway use default `init`. Do not rebuild pairing / WebSocket APIs.
+8. **Prefer `npx @tomorrowos/sdk@latest init --hosting v0`**. For Replit/Railway use `npx @tomorrowos/sdk@latest init .`. Do not rebuild pairing / WebSocket APIs. Untagged `npx @tomorrowos/sdk init` is forbidden (stale cache).
 9. **Never commit secrets.** Use Vercel Environment Variables.
 10. **Skip Replit-only files.**
 11. **SQLite is not a production store on Vercel.**
@@ -207,15 +219,16 @@ Then ask **Question 1**.
 16. **No inventing CMS login** from a branding URL.
 17. **Skip ??invent.** Stay on Q1?Q3 only.
 18. **Publish gate:** `/status` JSON + WebSocket 101; no static `public/` trap.
+19. **Q3 is a form, not a question ? and you must WAIT.** After Q2, open one dialog with **all seven** optional inputs visible together, then **stop and wait** for submit or explicit **"skip"**. **Never** auto-continue because fields are optional. **Never** ask a preliminary branding choice. **Never** show only Product Name + Primary colour. **Never** use multiple-choice / Option A-B for branding. Logo = **Upload** above **Logo URL**.
 
-**Question order:** Q1 ??(auto-set store env) ??Q2 ??Q3 ??execution checklist.
+**Question order:** Q1 -> (auto-set store env) -> Q2 -> Q3 form (**wait for user**) -> execution checklist.
 
 ---
 
 ## Scheme A ??Vercel Functions + WebSockets (mandatory for Production)
 
 > **Goal:** Preview may use Next + proxy; **Publish** runs TomorrowOS as a **Vercel Function** (`api/index.ts`) on **Fluid**, with WebSocket support per [Vercel WebSockets docs](https://vercel.com/docs/functions/websockets).  
-> **Scope:** Layout + `vercel.json` + dashboard. Prefer `npx @tomorrowos/sdk init --hosting v0` (`cms-starter-v0`).  
+> **Scope:** Layout + `vercel.json` + dashboard. Prefer `npx @tomorrowos/sdk@latest init --hosting v0` (`cms-starter-v0`).  
 > **Do not** break Replit/Railway: those keep using default `init` ??`cms-starter` (root `server.ts` + `server.listen`, no `api/`).
 
 ### Why Scheme A exists
@@ -452,7 +465,7 @@ Adapt script names / process runners as needed. **Invariant:**
 
 Use the latest published `@tomorrowos/sdk` when scaffolding (do not invent versions).
 
-Add `@vercel/blob` only when the user chooses **Vercel Blob** in Question 2.
+Add nothing extra for Blob when using `@tomorrowos/sdk@0.9.69+` (`@vercel/blob` is bundled). Only ensure `BLOB_READ_WRITE_TOKEN` + `TOMORROWOS_MEDIA=vercel-blob` when the user chooses **Vercel Blob** in Question 2.
 
 For Preview shell only, add as needed: `next`, `react`, `react-dom`, and a process runner (`concurrently` or equivalent). These must **not** become the Production CMS.
 
@@ -582,10 +595,11 @@ If Vercel?s UI and this file disagree on bundling, **prefer whatever keeps a sin
 
 ---
 
-## Question 1 ??Database (always)
+## Question 1 ? Database (always)
 
-> **Do not** ask screen counts. Present all three options; recommend **Supabase** for Vercel fleets.  
-> **After the user picks a database:** collect the URL if needed, then **you** set `TOMORROWOS_STORE` + `DATABASE_SSL` (see mapping below). The customer must **never** be asked to type those two names or values.
+> **Do not** ask screen counts. Present both options; recommend **Supabase** for Vercel fleets.  
+> **After the user picks a database:** collect the URL if needed, then **you** set `TOMORROWOS_STORE` + `DATABASE_SSL` (see mapping below). The customer must **never** be asked to type those two names or values.  
+> **Forbidden:** offering SQLite as a user-facing Q1 choice (ephemeral filesystem on Vercel).
 
 ### Agent-owned env mapping (mandatory)
 
@@ -593,23 +607,20 @@ If Vercel?s UI and this file disagree on bundling, **prefer whatever keeps a sin
 |------------|--------------------|--------------------|
 | 1 Supabase | `TOMORROWOS_STORE=supabase`, `DATABASE_SSL=true` | `SUPABASE_URL` (pooler string) |
 | 2 Neon | `TOMORROWOS_STORE=postgres`, `DATABASE_SSL=true` | `DATABASE_URL` (pooled string) |
-| 3 SQLite | `TOMORROWOS_STORE=sqlite` | Confirmation only |
 
-If you open an Env configuration UI for Q1, fields visible to the user may include **only** `SUPABASE_URL` or `DATABASE_URL`. **Do not** show blank `TOMORROWOS_STORE` / `DATABASE_SSL` inputs ??write those yourself in the same step.
+If you open an Env configuration UI for Q1, fields visible to the user may include **only** `SUPABASE_URL` or `DATABASE_URL`. **Do not** show blank `TOMORROWOS_STORE` / `DATABASE_SSL` inputs ? write those yourself in the same step.
 
-### Step A ??Ask storage choice
+### Step A ? Ask storage choice
 
 **Ask exactly:**
 
 > Which database should TomorrowOS use on Vercel?
 >
-> **1. Supabase Postgres (recommended)** ??durable pairing/playlists; use the **Session pooler** URL (`*.pooler.supabase.com:6543`).
+> **1. Supabase Postgres (recommended)** ? durable pairing/playlists; use the **Session pooler** URL (`*.pooler.supabase.com:6543`).
 >
-> **2. Neon Postgres** ??serverless Postgres native to Vercel; use Neon?s **pooled** connection string from the Neon dashboard (not the direct un-pooled host for serverless).
+> **2. Neon Postgres** ? serverless Postgres native to Vercel; use Neon's **pooled** connection string from the Neon dashboard (not the direct un-pooled host for serverless).
 >
-> **3. SQLite (`data/tomorrowos.db`)** ??**demo / local only on Vercel.** The filesystem is ephemeral; pairings and playlists will not survive redeploys. Only choose this if you understand the limitation.
->
-> Reply with **1**, **2**, or **3** (or ?Supabase??/ ?Neon??/ ?SQLite??.
+> Reply with **1** or **2** (or "Supabase" / "Neon").
 
 ### Step B ??If **1 / Supabase**
 
@@ -653,21 +664,7 @@ If you open an Env configuration UI for Q1, fields visible to the user may inclu
 2. Wire `createTomorrowOSStore` for Postgres.
 3. **Do not** commit the real connection string.
 4. **Do not** ask the user to fill `TOMORROWOS_STORE` or `DATABASE_SSL` in chat or Env UI.
-5. If you see `ENETUNREACH` on `:5432`, switch to Neon?s **pooled** URL.
-
-### Step D ??If **3 / SQLite**
-
-**Warn exactly before continuing:**
-
-> SQLite on Vercel is **not** suitable for production fleets ??data in `data/tomorrowos.db` is lost when the instance is recycled or redeployed. Continue only for a quick demo.
-
-Only proceed after the user explicitly confirms.
-
-**You must then (automatic):**
-
-1. Set `TOMORROWOS_STORE=sqlite` yourself (do not ask the user to type it).
-2. Keep `sqlitePath` for `data/tomorrowos.db`.
-3. Warn again in the final summary that they should move to Supabase or Neon for real devices.
+5. If you see `ENETUNREACH` on `:5432`, switch to Neon's **pooled** URL.
 
 **Later in Question 3:** set `cms.hostingTarget` to **`"vercel"`** (all Q1 branches).
 
@@ -677,23 +674,21 @@ Only proceed after the user explicitly confirms.
 
 > **This question is only about media files (images/videos).**  
 > It is **not** about OpenAI, AI pairing, or LLM keys. If you are about to ask for an `sk-` key, **stop** ??you are off-protocol.  
-> **Copy the three options below verbatim.** Wrong examples that must **never** appear: ?Vercel Blob (recommended)?? ?Supabase Storage?? ?No media storage / disable uploads??
+> **Copy the two options below verbatim.** Wrong examples that must **never** appear: "Vercel Blob (recommended)", "Supabase Storage", "No media storage / disable uploads", "local disk only".
 
-### Step A ??Ask storage choice
+### Step A ? Ask storage choice
 
-**Ask exactly (wording must match ??Cloudinary is recommended):**
+**Ask exactly (wording must match ? Cloudinary is recommended):**
 
 > How should playlist media (images/videos) be stored?
 >
-> **1. Cloudinary (recommended)** ??durable public HTTPS URLs (`https://res.cloudinary.com/...`). Works out of the box with `@tomorrowos/sdk` auto-detection. **Prefer this on Vercel.**
+> **1. Cloudinary (recommended)** ? durable public HTTPS URLs (`https://res.cloudinary.com/...`). Works out of the box with `@tomorrowos/sdk` auto-detection. **Prefer this on Vercel.**
 >
-> **2. Vercel Blob** ??Vercel-native object storage; durable `https://*.public.blob.vercel-storage.com/...` URLs. Use when you want media on the same Vercel project without a Cloudinary account.
+> **2. Vercel Blob** ? Vercel-native object storage; durable `https://*.public.blob.vercel-storage.com/...` URLs. Use when you want media on the same Vercel project without a Cloudinary account.
 >
-> **3. Local disk only** ??`cms-panel/uploads` or `public/uploads` (OK for quick local tests; **not** for production Vercel fleets ??files are ephemeral).
->
-> Reply with **1**, **2**, or **3** (or ?Cloudinary??/ ?Vercel Blob??/ ?local??.
+> Reply with **1** or **2** (or "Cloudinary" / "Vercel Blob").
 
-If you catch yourself about to offer Blob-as-recommended, Supabase Storage, or ?no media?? **stop and paste the block above instead**.
+If you catch yourself about to offer Blob-as-recommended, Supabase Storage, local disk, or "no media" ? **stop and paste the block above instead**.
 
 ### Step B ??If **1 / Cloudinary** (same Question 2 ??**one Env popup**)
 
@@ -726,13 +721,13 @@ If you catch yourself about to offer Blob-as-recommended, Supabase Storage, or ?
 
 The SDK auto-detects these env vars.
 
-### Step C ??If **2 / Vercel Blob** (same Question 2)
+### Step C - If **2 / Vercel Blob** (same Question 2)
 
 **Ask exactly:**
 
 > I will enable **Vercel Blob** for media uploads.
 >
-> 1. In the Vercel project: **Storage ??Create ??Blob** (or link an existing Blob store to this project).
+> 1. In the Vercel project: **Storage ? Create ? Blob** (or link an existing Blob store to this project).
 > 2. Confirm **`BLOB_READ_WRITE_TOKEN`** is available (Vercel usually injects it when Blob is linked).
 >
 > Paste the token only if it is not already set in your project Env Vars. Do you already have Blob linked on this Vercel project? (yes / no)
@@ -740,95 +735,93 @@ The SDK auto-detects these env vars.
 **You must then:**
 
 1. Set Vercel Env Var: `BLOB_READ_WRITE_TOKEN=<token>` (if not auto-injected). Prefer the Env popup when available.
-2. `npm install @vercel/blob` (add to `dependencies`).
-3. Wire uploads so media returns **absolute HTTPS Blob URLs** stored in `uploaded_assets` (players need stable public URLs).
-   - The SDK **natively auto-detects Cloudinary** today. For Vercel Blob, add a thin upload bridge in the CMS project (e.g. custom route or middleware that calls `put()` from `@vercel/blob` and persists the returned `url` the same way Cloudinary URLs are stored).
-   - Minimum pattern:
+2. Set Vercel Env Var yourself (agent-owned): `TOMORROWOS_MEDIA=vercel-blob`. **Do not** ask the user to type this.
+3. Ensure `@tomorrowos/sdk@0.9.69+` is installed (`@vercel/blob` is a transitive dependency ? no project-level Blob bridge / custom `put()` middleware).
+4. The SDK **natively** uploads via Vercel Blob when the token is present (same HTTP routes as local: `/media/upload` and chunked complete). Returned asset URLs are absolute `https://*.public.blob.vercel-storage.com/...`.
+5. Confirm Control Panel **Media Server** shows provider **Blob** (not Local). Do **not** invent status copy about "Blob bridge" or paste the URL pattern as a status detail.
+6. Do **not** proceed to Question 3 until `BLOB_READ_WRITE_TOKEN` exists (or Blob is linked and token is confirmed in the Vercel dashboard).
 
-```ts
-import { put } from "@vercel/blob";
-
-// On upload: const blob = await put(filename, body, { access: "public", token: process.env.BLOB_READ_WRITE_TOKEN });
-// Store blob.url in uploaded_assets ??same shape as Cloudinary secure URLs.
-```
-
-4. Warn: until the project?s Blob bridge is wired, Control Panel **Media** status may show local/ephemeral ??verify uploads return `https://*.blob.vercel-storage.com/...` before calling setup complete.
-5. Do **not** proceed to Question 3 until `BLOB_READ_WRITE_TOKEN` exists (or Blob is linked and token is confirmed in the Vercel dashboard).
-
-### Step D ??If **3 / local uploads**
-
-1. `mkdir -p public/uploads`
-2. Warn clearly: files may vanish on redeploy; players need stable HTTPS URLs ??Cloudinary or Vercel Blob is strongly preferred for Vercel.
-
+**Forbidden for Q2=Blob:** scaffolding a custom "Blob bridge", writing status text like "uploads persist to durable https://*.public.blob.vercel-storage.com/ URLs via the Blob bridge", or leaving uploads on local `cms-panel/uploads`.
 ---
 
-## Question 3 ??Brand (`brand.json` only)
+## Question 3 - Brand form (`brand.json` only; **not a choice question**; **must wait**)
 
-> Updates **only** `brand.json`. Does **not** change Vercel project settings, Env Vars, or `server.ts` store wiring beyond what Q1?Q2 already required.
+> Updates **only** `brand.json`. Does **not** change Vercel project settings, Env Vars, `vercel.json`, or `server.ts` store wiring beyond what Q1-Q2 already required.
 >
-> **IRON RULE ??website URL ??build a website / login / auth CMS.**  
-> If the user pastes a URL (or says ?make it look like this site??, that input is **reference material for `brand.json` only** (name, colours, fonts, logo, tagline).  
-> **Do not** scaffold a login page, signup, OAuth, gated dashboard, or copy the reference site?s IA/pages ??**unless the user explicitly asks for CMS login / auth**.  
-> Default TomorrowOS Control Panel has **no login**. Keep it that way.
-
-### Step A ??Ask branding input
-
-**Ask exactly:**
-
-> Let?s brand your TomorrowOS experience. You can answer in either way:
+> **IRON RULE - form, not question; show then WAIT:** As soon as Q2 is done, **open the brand form**. Do **not** ask a choice first. Show **all seven optional fields on one screen at the same time**. Then **HARD STOP** until the user submits the form, replies with values, or says **"skip"**.
 >
-> **Option A ??Website URL only (brand reference)**  
-> Paste **one public website URL**. I will use it **only** to infer colours, fonts, name, tagline, and logo for **`brand.json`**.  
-> I will **not** rebuild that website, add a login page, or change Control Panel features ??unless you explicitly ask for login/auth later.
+> **Optional fields ? optional step.** Leaving a field blank keeps the starter default **after the user responds**. It does **not** authorize you to skip waiting or auto-apply defaults in the same turn.
 >
-> **Option B ??Manual fields**  
-> Provide:
-> 1. **Product / venue name**
-> 2. **Tagline** (optional)
-> 3. **Primary colour** (hex, e.g. `#FF8A3D`)
-> 4. **Background colour** (hex, optional ??default `#FAFAF9`)
-> 5. **Text colour** (hex, optional ??default `#0A0908`)
-> 6. **Secondary / accent colour** (hex, optional)
-> 7. **Logo** ??upload SVG/PNG into the project, or a URL I can fetch into `./assets/`
+> - **Forbidden:** any preliminary question ("customize branding?", "skip or set brand?", Option A/B)
+> - **Forbidden:** multiple-choice / radio / "reply 1 or 2" for branding
+> - **Forbidden:** showing only Product Name + Primary colour (or any subset under 7)
+> - **Forbidden:** field-by-field Next wizard (name -> wait -> tagline -> ...)
+> - **Forbidden:** one freeform / Other box for all brand values
+> - **Forbidden:** auto-continuing to init / scaffold / env / deploy because "fields are optional" or "I shouldn't re-ask"
+> - **Required:** six text inputs + Logo Upload above Logo URL, all visible together
+> - **Required:** wait for one user action (submit / values / "skip") before scaffolding continues
+>
+> **Self-check:** If the UI you are about to show has fewer than six text fields for name/tagline/four colours, **abort and rebuild** - that UI is off-protocol.
+>
+> **Every field is optional** once the form is shown. After the user submits (including all-blank) or says "skip": keep starter **`brand.json`** for blanks; **do not** re-ask Q3 a second time. **Do not** invent a second branding prompt.
+>
+> Default TomorrowOS Control Panel has **no login**. Do **not** scaffold login/auth unless the user explicitly asks.
 
-### Step B ??If the user gives **only a website URL** (Option A)
+### Preferred UI (open immediately - all seven at once - then wait)
+
+Open **one** dialog titled **Brand your TomorrowOS experience**. Render **each row as its own control**. All rows must appear **together** on first paint - not revealed after a choice, not after filling a previous field. After opening, **end your turn** and wait.
+
+| # | Exact label | Control type | Blank default |
+|---|-------------|--------------|---------------|
+| 1 | **Product Name** | text input | existing `brand.json` `name` (e.g. `My Venue`) |
+| 2 | **Tagline** | text input | existing tagline (e.g. `Digital signage`) |
+| 3 | **Primary colour** | text input (hex) | e.g. `#FF8A3D` |
+| 4 | **Background colour** | text input (hex) | e.g. `#FAFAF9` |
+| 5 | **Text colour** | text input (hex) | e.g. `#0A0908` |
+| 6 | **Secondary colour** | text input (hex) | e.g. `#F5F3EF` |
+| 7 | **Logo** | **Upload** (SVG/PNG file picker) **above** **Logo URL** (text input) | keep `./assets/logo.svg` |
+
+Helper text: *All fields optional. Leave blank to keep starter brand.json defaults. Submit once, or reply "skip". I will wait before continuing setup.*
+
+**Logo UX:** Upload control directly above Logo URL. Either is fine; if both provided, prefer the uploaded file.
+
+### If a form UI is unavailable - one chat message only (still wait)
+
+Only when the platform **cannot** render multi-field forms. Do **not** ask a choice first. Send **exactly one** message listing all seven fields, then **end your turn and wait** (user may answer partially, attach a logo, or say "skip"):
+
+> Brand your TomorrowOS experience (**all optional - reply once**). Leave any field blank to keep starter `brand.json` defaults. I will wait for your reply before scaffolding:
+>
+> 1. **Product Name**
+> 2. **Tagline**
+> 3. **Primary colour** (hex)
+> 4. **Background colour** (hex)
+> 5. **Text colour** (hex)
+> 6. **Secondary colour** (hex)
+> 7. **Logo** - attach SVG/PNG or paste a Logo URL
+>
+> Or reply **skip** to keep all defaults.
+
+### After the user submits
 
 **You must:**
 
-1. **Fetch and inspect** the page (HTTP GET the URL; follow one redirect if needed). Do not invent colours.
-2. **Write / update `brand.json` only** from what you infer. Touch nothing else for this step (no new pages, no auth, no Next marketing site, no login UI).
-3. **Derive branding** using this priority order:
-   - **Name:** `<title>`, `og:site_name`, or prominent header / logo `alt` text (trim to ??60 chars).
-   - **Tagline:** `meta[name="description"]`, `og:description`, or first hero subtitle (??120 chars).
-   - **Primary colour:** `meta[name="theme-color"]`, CSS `--primary` / `--brand` variables, or dominant accent from linked stylesheets / inline styles (convert to `#RRGGBB`).
-   - **Background colour:** `body` / `:root` background (default `#FAFAF9` if light site).
-   - **Text colour:** main body text colour (default `#0A0908` if light site).
-   - **Secondary colour:** muted border / secondary button colour, or a tint of the primary.
-   - **Font:** first `font-family` on `body` (strip quotes; default `Inter` if generic system stack).
-   - **Logo:** prefer `og:image`, then `link[rel="icon"]` / apple-touch-icon, then header `<img>` logo. Download into `./assets/logo.png` or `./assets/logo.svg` and set `logoPath` accordingly. If only favicon exists, use it and note size in the summary.
-4. **Contrast check:** if background is dark, set `activationScreen.theme` to `"dark"` and add `logoPathOnDark` when a light logo variant exists.
-5. **Infer `cms.useCase`** from page content when obvious (restaurant / retail / corporate / etc.); otherwise `"other"`.
-6. **Show a one-line summary** to the user (name + primary hex + logo path) before or while writing the file ??do not ask a second branding question unless fetch failed.
-7. If the URL is unreachable, blocked, or has no usable styles, say so and fall back to **Option B** manual questions for missing fields only.
+1. For each blank field, **keep the existing starter `brand.json` value** - do not invent new colours/names.
+2. For filled fields, write them into `brand.json` only.
+3. If Logo is a URL: fetch into `./assets/logo.png` or `./assets/logo.svg` when possible and set `logoPath`; if fetch fails, keep existing `logoPath` and note it.
+4. If Logo is an upload: save under `./assets/` and set `logoPath` (prefer upload over URL when both are present).
+5. Always set **`cms.hostingTarget`: `"vercel"`** without asking.
+6. Default `cms.expectedScreens` to `5` unless the user already volunteered a number.
+7. Show a one-line summary (name + primary hex + logo path) - **do not** ask a second branding question.
+8. **Do not** build login, signup, OAuth, or clone a marketing site from branding answers.
 
-**Explicitly forbidden when the user only gave a URL (no login request):**
+### Write `brand.json`
 
-- ??Login / signup / ?Sign in to continue??screens
-- ??Auth middleware, sessions, cookies, OAuth, password forms
-- ??Cloning the reference site as a marketing landing or multi-page CMS
-- ??Gating the Control Panel behind authentication
-- ??Treating ?make it like this site??as ?rebuild this site??
-
-If the reference site itself is a login page, **still only extract visual brand tokens** (colours/logo/name) into `brand.json` ??do **not** recreate that login flow.
-
-### Step C ??Write `brand.json`
-
-Validate mentally against `brand.schema.json`. Minimum:
+Validate mentally against `brand.schema.json`. Minimum shape (values = user input **or** existing defaults):
 
 ```json
 {
-  "name": "<user name or site-derived name>",
-  "tagline": "<tagline or Digital signage>",
+  "name": "<Product Name or existing brand.json name>",
+  "tagline": "<Tagline or existing>",
   "targetPlatforms": ["tizen"],
   "primaryColor": "#FF8A3D",
   "secondaryColor": "#F5F3EF",
@@ -851,11 +844,11 @@ Validate mentally against `brand.schema.json`. Minimum:
 }
 ```
 
-Always set **`cms.hostingTarget`: `"vercel"`** without asking. Default `expectedScreens` to `5` unless the user already volunteered a number. Set `cmsEndpoint` only if they already know the public `https://?vercel.app` URL; otherwise tell them to pair TVs with the **Published** HTTPS origin (player maps `https://` ??`wss://`).
+Set `cmsEndpoint` only if they already know the public `https://?vercel.app` URL; otherwise tell them to pair TVs with the **Published** HTTPS origin (player maps `https://` ? `wss://`).
 
 ---
 
-## After all answers ??execution checklist
+## After all answers ? execution checklist
 
 ### A. Seed the project
 
@@ -873,7 +866,7 @@ Then (**Scheme A ??mandatory for Publish**):
 4. **Force Project Settings** per **Scheme A4** (Framework = Other, Output Directory empty, Start = `npm run start`, Fluid on). Patch dashboard via API if it still says Next.js.
 5. Do **not** add root `api/` catch-all for raw `http.Server`.
 6. Do **not** add `.replit*`.
-7. If Q2 = Vercel Blob: install `@vercel/blob` and wire the upload bridge.
+7. If Q2 = Vercel Blob: set `BLOB_READ_WRITE_TOKEN` + `TOMORROWOS_MEDIA=vercel-blob` (SDK-native; no custom bridge).
 
 ### B. Environment Variables (Vercel dashboard + local)
 
@@ -881,10 +874,11 @@ Then (**Scheme A ??mandatory for Publish**):
 |------|----------|--------------|
 | `SUPABASE_URL` | If Q1 = Supabase | User pastes URL |
 | `DATABASE_URL` | If Q1 = Neon | User pastes URL |
-| `TOMORROWOS_STORE` | Yes | **Agent auto-sets only** ??never a blank field for the user (`supabase` / `postgres` / `sqlite`) |
+| `TOMORROWOS_STORE` | Yes | **Agent auto-sets only** ? never a blank field for the user (`supabase` / `postgres`) |
 | `DATABASE_SSL` | Yes for Postgres | **Agent auto-sets only** ??never a blank field for the user (`true`) |
 | `CLOUDINARY_*` | If Q2 = Cloudinary | User via **one Env popup** (all fields) |
 | `BLOB_READ_WRITE_TOKEN` | If Q2 = Vercel Blob | User / Blob link |
+| `TOMORROWOS_MEDIA` | If Q2 = Vercel Blob | **Agent auto-sets** `vercel-blob` |
 | `TOMORROWOS_INTERNAL_PORT` | Preview only | Agent (e.g. `3001`) |
 | `PORT` | Optional | Vercel injects for Production |
 
@@ -965,10 +959,14 @@ Tell the user:
 | WebSocket fails on Publish | Fluid off / static-only / Next as Production / no Function WS | Enable Fluid; Scheme A; test 101 upgrade |
 | Devices fail only on Preview | Next proxy cannot upgrade `wss` | Expected ??pair on Publish URL |
 | Agent asked user to fill `TOMORROWOS_STORE` / `DATABASE_SSL` | Off-protocol | Agent must auto-set after DB choice; remove those fields from user Env forms |
-| Agent offered Blob-as-recommended / Supabase Storage / ?no media??for Q2 | Invented options | Re-ask Q2 verbatim: **1 Cloudinary (recommended)**, 2 Blob, 3 local |
+| Agent offered Blob-as-recommended / Supabase Storage / local disk / "no media" for Q2 | Invented options | Re-ask Q2 verbatim: **1 Cloudinary (recommended)**, 2 Vercel Blob |
 | Agent asked Cloudinary key/secret in three chat turns | Off-protocol | Use **one Env popup** with all Cloudinary fields |
 | Agent asked for OpenAI / `sk-` key during setup | Hallucinated ?AI pairing??requirement | **Refuse.** TomorrowOS does not need LLM keys. Return to Q2 media choices only |
-| Agent built a login page after user pasted a URL | Misread brand reference as product scope | Remove login; keep starter Control Panel; apply URL only to `brand.json` |
+| Agent asked a branding choice / Option A-B / "customize?" before the form | Off-protocol Q3 | Close it; immediately open the **7-field form** (no choice step) |
+| Agent showed only Name + Primary colour (or any subset) | Off-protocol Q3 | Rebuild with **all seven** inputs visible at once |
+| Agent auto-continued after showing Q3 because "fields are optional" / "shouldn't re-ask" | Off-protocol Q3 | **HARD STOP** and wait for submit or explicit "skip"; do not scaffold yet |
+| Agent asked branding as Option A URL vs Option B, or field-by-field Next | Off-protocol Q3 | Re-open Q3 as **seven separate optional inputs** in one dialog; blanks keep `brand.json` |
+| Agent built a login page from branding answers | Misread brand step as product scope | Remove login; keep starter Control Panel; apply answers only to `brand.json` |
 | Secrets in git | Mistake | Rotate keys; move to Vercel Env Vars |
 | Replit files present | Copied wrong protocol | Delete `.replit*`; use this file |
 
@@ -981,11 +979,11 @@ Tell the user:
 | Secrets | Replit Secrets | Vercel Environment Variables |
 | Deploy config | `.replit`, artifact `kind=web` | `vercel.json` + Fluid; **Framework = Other**; **no** `.replit` |
 | `hostingTarget` | `"here"` | `"vercel"` |
-| Database | Supabase (primary) | Supabase **or Neon** (pooled); SQLite demo only |
+| Database | Supabase (primary) | Supabase **or Neon** (pooled) |
 | Media | Cloudinary or Replit Object Storage | Cloudinary **or Vercel Blob** |
 | Preview | Replit Preview / Autoscale Node | **Next shell + proxy** when v0 hardwires Next |
 | Publish | Long-lived Node | **Node `TomorrowOS.listen` only** (not Next); gate on no `404 NOT_FOUND` |
-| Brand from URL | Not in Replit protocol | **Option A** ??infer **`brand.json` only**; never invent login |
+| Brand | Replit 7-field optional dialog | **Form not question:** all 7 optional inputs at once; no choice first; Logo Upload above Logo URL |
 
 ---
 
@@ -997,9 +995,9 @@ After setup, report:
 2. **Publish health:** Framework = Other; Output ??`public`; `GET /status` ??JSON; `GET /` OK
 3. **Preview note:** Next proxy shell used / not needed
 4. **Env Vars set** (names only ??never values); note which were auto-set (`TOMORROWOS_STORE`, `DATABASE_SSL`)
-5. **Store:** Supabase pooler / Neon pooled / SQLite (with warning)
-6. **Media:** Cloudinary, Vercel Blob, or local (with warning)
-7. **Brand:** name + `hostingTarget: vercel` (+ note if derived from website URL)
+5. **Store:** Supabase pooler or Neon pooled
+6. **Media:** Cloudinary or Vercel Blob
+7. **Brand:** name + `hostingTarget: vercel` (from optional Q3 fields; blanks = starter defaults)
 8. **Runtime split:** Preview = ??; Publish = Node TomorrowOS (confirm **not** Next)
 9. **Open action:** if Database still ERROR, paste the pooler instruction again
 
@@ -1009,4 +1007,21 @@ Protocol complete when:
 - **Publish** returns Control Panel at `/` **and** `/status` JSON from pure Node `TomorrowOS.listen` with Fluid (not static `public/`, not `404: NOT_FOUND`, not `Unexpected token 'T'`), **and**
 - Q1?Q3 configuration is saved
 
-??even if a sandbox DB probe still flakes **after** the pooled URL is correctly set for Production.
+? even if a sandbox DB probe still flakes **after** the pooled URL is correctly set for Production.
+
+---
+
+## Protocol version
+
+`vercel-setup/1.14` - pairs with `@tomorrowos/sdk` 0.9.69+ and `VERCEL_QUESTIONS.md` 1.5.
+
+**Changelog 1.14:** Vercel Blob is **SDK-native** (`BLOB_READ_WRITE_TOKEN` + `TOMORROWOS_MEDIA=vercel-blob`). No project Blob bridge. Status providers use display names (Neon, Supabase, Blob, Cloudinary, Replit Object Storage). Forbidden marketing status copy about blob URL patterns.
+
+**Changelog 1.13:** Q3 must **HARD STOP and WAIT** for user submit or "skip". Optional fields do **not** authorize auto-continuing with defaults. Clarifies "do not re-ask" = after the user already replied, not "skip waiting".
+
+**Changelog 1.12:** Q3 is a **form, not a question**. No preliminary branding choice. Must show **all seven** optional inputs at once (never only Name + Primary colour). Logo = Upload above Logo URL.
+
+**Changelog 1.11:** Q3 must render **seven separate input controls** (not one freeform / Other box). Logo field = **Upload** above **Logo URL**; blanks keep starter `brand.json`.
+
+**Changelog 1.10:** Q3 is a **single** seven-field optional branding dialog (Product Name, Tagline, Primary / Background / Text / Secondary colour, Logo URL or upload). Removed Option A website-URL vs Option B split. Blanks keep starter `brand.json`. Pairs with new `VERCEL_UPGRADE.md`.
+

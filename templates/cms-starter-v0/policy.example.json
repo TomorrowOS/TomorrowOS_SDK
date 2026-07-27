@@ -2,14 +2,13 @@
   "policy": {
     "playlists": [
       {
-        "id": "weekday-promo",
-        "name": "Weekday promo",
+        "id": "promo-window",
+        "name": "Promo window",
         "schedule": {
-          "startDate": "2026-05-01",
-          "endDate": "2026-05-31",
-          "daysOfWeek": [1, 2, 3, 4, 5],
-          "start": "09:00",
-          "end": "17:00"
+          "startDate": "2026-05-05",
+          "start": "13:00",
+          "endDate": "2026-05-08",
+          "end": "14:00"
         },
         "items": [
           {

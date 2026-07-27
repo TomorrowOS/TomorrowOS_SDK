@@ -52,6 +52,93 @@ function configureCloudinary(config: CloudinaryStorageConfig): void {
   });
 }
 
+function resolvePublicId(
+  config: CloudinaryStorageConfig,
+  publicId: string
+): string {
+  if (!config.folder) return publicId;
+  const folder = config.folder.replace(/^\/+|\/+$/g, "");
+  if (!folder) return publicId;
+  if (publicId === folder || publicId.startsWith(`${folder}/`)) return publicId;
+  return `${folder}/${publicId}`;
+}
+
+/** Browser direct-upload params (signed). Secret never leaves the server. */
+export function createSignedUploadParams(
+  config: CloudinaryStorageConfig,
+  options: { publicId: string; filename: string }
+): {
+  cloudName: string;
+  apiKey: string;
+  timestamp: number;
+  signature: string;
+  publicId: string;
+  filenameOverride: string;
+  uploadUrl: string;
+} {
+  configureCloudinary(config);
+  const publicId = resolvePublicId(config, options.publicId);
+  const timestamp = Math.round(Date.now() / 1000);
+  const paramsToSign: Record<string, string | boolean | number> = {
+    timestamp,
+    public_id: publicId,
+    overwrite: true,
+    unique_filename: false,
+    use_filename: false,
+    filename_override: options.filename
+  };
+  const signature = cloudinary.utils.api_sign_request(
+    paramsToSign,
+    config.apiSecret
+  );
+  return {
+    cloudName: config.cloudName,
+    apiKey: config.apiKey,
+    timestamp,
+    signature,
+    publicId,
+    filenameOverride: options.filename,
+    uploadUrl: `https://api.cloudinary.com/v1_1/${config.cloudName}/auto/upload`
+  };
+}
+
+export async function fetchCloudinaryResource(
+  config: CloudinaryStorageConfig,
+  publicId: string,
+  resourceType = "image"
+): Promise<CloudinaryUploadResult & { etag?: string; durationSec?: number }> {
+  configureCloudinary(config);
+  const types =
+    resourceType === "auto"
+      ? (["video", "image", "raw"] as const)
+      : ([resourceType, "video", "image", "raw"] as const);
+
+  let lastErr: unknown;
+  for (const type of types) {
+    try {
+      const result = (await cloudinary.api.resource(publicId, {
+        resource_type: type
+      })) as UploadApiResponse & { etag?: string; duration?: number };
+      return {
+        publicId: result.public_id,
+        secureUrl: result.secure_url,
+        resourceType: result.resource_type || type,
+        bytes: result.bytes,
+        etag: result.etag,
+        durationSec:
+          typeof result.duration === "number" && Number.isFinite(result.duration)
+            ? result.duration
+            : undefined
+      };
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error("Cloudinary asset not found");
+}
+
 export async function uploadBufferToCloudinary(
   body: Buffer,
   options: {
@@ -62,9 +149,7 @@ export async function uploadBufferToCloudinary(
 ): Promise<CloudinaryUploadResult> {
   configureCloudinary(options.config);
 
-  const publicId = options.config.folder
-    ? `${options.config.folder.replace(/^\/+|\/+$/g, "")}/${options.publicId}`
-    : options.publicId;
+  const publicId = resolvePublicId(options.config, options.publicId);
 
   const result = await new Promise<UploadApiResponse>((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
