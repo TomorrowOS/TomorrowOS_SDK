@@ -19,7 +19,6 @@ export interface SavePlaylistInput {
 export interface BuiltDevicePolicy {
   policy: {
     playlists: PublishedPlaylistSnapshot[];
-    fallback: { type: "brand" };
     revision?: number;
     syncMode?: "latest" | "snapshot";
   };
@@ -305,7 +304,6 @@ export class PlaylistCatalog {
     return {
       policy: {
         playlists,
-        fallback: { type: "brand" },
         revision: Date.now(),
         syncMode: useLatest ? "latest" : "snapshot"
       }

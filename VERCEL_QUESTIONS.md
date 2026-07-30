@@ -1,6 +1,6 @@
 # Vercel / v0 - Verbatim question bank
 
-> **Protocol:** `vercel-questions/1.5` (pairs with `VERCEL_SETUP.md` 1.14+ / `@tomorrowos/sdk` 0.9.69+)  
+> **Protocol:** `vercel-questions/1.5` (pairs with `VERCEL_SETUP.md` 1.14+ / `@tomorrowos/sdk` 0.9.70+)  
 > **For Agents:** When asking the user a setup question, **copy-paste the block below for that step EXACTLY**.  
 > Do **not** paraphrase, reorder, rename options, or invent alternatives (no S3, no Supabase Storage, no "Blob recommended", no "disable media").  
 > After each answer, configure per `VERCEL_SETUP.md`, then paste the **next** block.  

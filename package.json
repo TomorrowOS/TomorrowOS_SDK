@@ -1,7 +1,7 @@
 {
   "name": "@tomorrowos/sdk",
-  "version": "0.9.69",
-  "description": "TomorrowOS CMS server SDK - WebSocket transport, pairing, device commands, optional static CMS UI. Includes CLI (tomorrowos init / build) and starter templates.",
+  "version": "0.9.71",
+  "description": "Server SDK for building and self-hosting digital signage CMS products with TomorrowOS players.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -32,7 +32,7 @@
     "prepublishOnly": "npm run build"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "dependencies": {
     "@replit/object-storage": "^1.0.0",

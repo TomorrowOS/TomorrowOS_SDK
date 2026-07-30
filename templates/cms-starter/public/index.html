@@ -231,11 +231,15 @@
         <p class="hint">Current installed SDK version:</p>
         <p class="update-sdk-version" id="updateSdkVersionLabel">Loading…</p>
         <p class="hint">
-          To upgrade on AI agent platforms (Replit, Vercel, etc.), paste this prompt into the Agent chat:
+          To upgrade on AI agent platforms, paste the matching prompt into the Agent chat:
         </p>
-        <pre class="update-sdk-prompt" id="updateSdkPromptText">Follow @tomorrowos/sdk REPLIT_UPGRADE.md to upgrade my CMS with the latest SDK.</pre>
+        <p class="update-sdk-prompt-label">Replit</p>
+        <pre class="update-sdk-prompt" id="updateSdkPromptReplit">Follow NPM package @tomorrowos/sdk REPLIT_UPGRADE.md to upgrade my CMS with the latest SDK.</pre>
+        <p class="update-sdk-prompt-label">Vercel</p>
+        <pre class="update-sdk-prompt" id="updateSdkPromptVercel">Follow NPM package @tomorrowos/sdk VERCEL_UPGRADE.md to upgrade my CMS with the latest SDK.</pre>
         <div class="modal-actions update-sdk-modal-actions">
-          <button type="button" id="copyUpdateSdkPromptBtn" class="primary">Copy prompt</button>
+          <button type="button" id="copyUpdateSdkPromptReplitBtn" class="primary">Copy Replit prompt</button>
+          <button type="button" id="copyUpdateSdkPromptVercelBtn" class="primary">Copy Vercel prompt</button>
           <button type="button" data-close-update-sdk-modal="1">Close</button>
         </div>
       </div>

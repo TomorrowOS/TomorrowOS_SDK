@@ -102,6 +102,7 @@ function copyStarter(destDir: string, force: boolean, hosting: StarterHosting): 
   console.log(`[tomorrowos] Template: ${templateName} (--hosting ${hosting})`);
   console.log(`[tomorrowos] @tomorrowos/sdk dependency: ^${sdkVer}`);
   console.log(`[tomorrowos] Initialized SQLite database: ${dbPath}`);
+  console.log(`[tomorrowos] Env template: ${path.join(resolved, ".env.example")}`);
   if (hosting === "replit") {
     console.log("Next: npm install, then npm start (see REPLIT_SETUP.md on Replit)");
   } else {
@@ -121,15 +122,19 @@ function parseHostingFlag(argv: string[]): StarterHosting {
 function cmdBuild(argv: string[]): void {
   const platformIdx = argv.indexOf("--platform");
   const platform =
-    platformIdx >= 0 && argv[platformIdx + 1] ? argv[platformIdx + 1] : "tizen";
+    platformIdx >= 0 && argv[platformIdx + 1] ? argv[platformIdx + 1] : "(unspecified)";
 
-  console.log(
-    `[tomorrowos] Player packaging for "${platform}" is not bundled in @tomorrowos/sdk yet.`
+  console.error(
+    `[tomorrowos] "tomorrowos build" does not package players. No file was produced for platform "${platform}".`
   );
-  console.log(
-    "Use your TomorrowOS player repository (assemble Web app + config), then run the platform SDK (e.g. Tizen CLI tizen package) from the build output directory."
+  console.error(
+    "Download a verified prebuilt player from your running Control Panel (Download Players), or from the player repositories."
   );
-  process.exitCode = 0;
+  console.error(
+    "Tizen: Control Panel → Download Players → Samsung (or https://tmr.sh/app/tizen/). BrightSign: Control Panel → Download Players → BrightSign (GET /players/brightsign.zip)."
+  );
+  console.error("See PLAYER_INSTALL.md for install and pairing steps.");
+  process.exit(1);
 }
 
 type MigratableDriver = "sqlite" | "postgres" | "supabase";
@@ -244,7 +249,6 @@ function printHelp(): void {
 Usage:
   tomorrowos init [directory]     Copy cms-starter template (default: Replit / Railway)
   tomorrowos migrate [options]    Migrate TomorrowOS data between supported databases
-  tomorrowos build --platform …   Placeholder; player packaging lives in the player repo
 
 Options:
   --hosting replit|v0|vercel      init template: replit (default) or Vercel/v0 (cms-starter-v0)
@@ -255,6 +259,8 @@ Examples:
   npx @tomorrowos/sdk@latest init ./my-cms --hosting replit
   npx @tomorrowos/sdk@latest init ./my-cms --hosting v0
   npx @tomorrowos/sdk@latest migrate --from sqlite --from-sqlite ./data/tomorrowos.db --to supabase --to-database-url "$DATABASE_URL"
+
+Player packages are not built by this CLI. Use Control Panel → Download Players, or see PLAYER_INSTALL.md.
 `);
 }
 

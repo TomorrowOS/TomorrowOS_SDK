@@ -33,8 +33,10 @@ let cachedSdkVersion = "";
 /** @type {number|null} CMS server boot time (ms) from GET /devices. */
 let serverStartedAtMs = null;
 
-const UPDATE_SDK_PROMPT =
-  "Follow @tomorrowos/sdk REPLIT_UPGRADE.md to upgrade my CMS with the latest SDK.";
+const UPDATE_SDK_PROMPT_REPLIT =
+  "Follow NPM package @tomorrowos/sdk REPLIT_UPGRADE.md to upgrade my CMS with the latest SDK.";
+const UPDATE_SDK_PROMPT_VERCEL =
+  "Follow NPM package @tomorrowos/sdk VERCEL_UPGRADE.md to upgrade my CMS with the latest SDK.";
 /** @type {ReturnType<typeof setTimeout>|null} */
 let reconnectGraceTimer = null;
 let uploadQueue = [];
@@ -2364,8 +2366,10 @@ function setUpdateSdkVersionLabel(version) {
 
 async function openUpdateSdkModal() {
   const modal = document.getElementById("updateSdkModal");
-  const promptEl = document.getElementById("updateSdkPromptText");
-  if (promptEl) promptEl.textContent = UPDATE_SDK_PROMPT;
+  const replitEl = document.getElementById("updateSdkPromptReplit");
+  const vercelEl = document.getElementById("updateSdkPromptVercel");
+  if (replitEl) replitEl.textContent = UPDATE_SDK_PROMPT_REPLIT;
+  if (vercelEl) vercelEl.textContent = UPDATE_SDK_PROMPT_VERCEL;
   setUpdateSdkVersionLabel(cachedSdkVersion || "Loading…");
   modal?.classList.remove("hidden");
 
@@ -2379,18 +2383,21 @@ function closeUpdateSdkModal() {
   document.getElementById("updateSdkModal")?.classList.add("hidden");
 }
 
-async function copyUpdateSdkPrompt() {
+async function copyUpdateSdkPrompt(which) {
+  const isVercel = which === "vercel";
   const text =
-    document.getElementById("updateSdkPromptText")?.textContent?.trim() ||
-    UPDATE_SDK_PROMPT;
+    document.getElementById(isVercel ? "updateSdkPromptVercel" : "updateSdkPromptReplit")
+      ?.textContent?.trim() ||
+    (isVercel ? UPDATE_SDK_PROMPT_VERCEL : UPDATE_SDK_PROMPT_REPLIT);
+  const btnId = isVercel ? "copyUpdateSdkPromptVercelBtn" : "copyUpdateSdkPromptReplitBtn";
   try {
     await navigator.clipboard.writeText(text);
-    const btn = document.getElementById("copyUpdateSdkPromptBtn");
+    const btn = document.getElementById(btnId);
     if (btn) {
       const prev = btn.textContent;
       btn.textContent = "Copied";
       setTimeout(() => {
-        btn.textContent = prev || "Copy prompt";
+        btn.textContent = prev || (isVercel ? "Copy Vercel prompt" : "Copy Replit prompt");
       }, 1200);
     }
   } catch {
@@ -2679,8 +2686,11 @@ document.addEventListener("DOMContentLoaded", () => {
     el.addEventListener("click", closeUpdateSdkModal);
   });
   document
-    .getElementById("copyUpdateSdkPromptBtn")
-    ?.addEventListener("click", () => void copyUpdateSdkPrompt());
+    .getElementById("copyUpdateSdkPromptReplitBtn")
+    ?.addEventListener("click", () => void copyUpdateSdkPrompt("replit"));
+  document
+    .getElementById("copyUpdateSdkPromptVercelBtn")
+    ?.addEventListener("click", () => void copyUpdateSdkPrompt("vercel"));
 
   document.getElementById("addAssetBtn")?.addEventListener("click", () => {
     if (uploadInProgress) return;

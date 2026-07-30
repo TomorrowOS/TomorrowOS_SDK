@@ -1,211 +1,269 @@
 # Player Installation — Getting TomorrowOS on your screens
 
-Your CMS is running. Now you need to get a TomorrowOS player onto your physical screen so the two can talk.
+This guide covers the full path from a verified player package to a paired screen.
 
-This document covers:
-
-1. How to build a player for your platform
-2. How to install it on a screen
-3. How to pair the screen with your CMS
-4. Troubleshooting
+| Step | What this doc answers |
+| --- | --- |
+| 1 | Where the verified player package comes from |
+| 2 | How the player receives the CMS endpoint |
+| 3 | Exact device installation steps |
+| 4 | Six-character pairing |
+| 5 | Tested firmware and model limitations |
+| 6 | Safe unpair / re-pair |
+| 7 | Known failure states |
 
 ---
 
 ## Prerequisites
 
-- You have a running TomorrowOS CMS (either locally, on Replit, Vercel, Railway, or self-hosted)
-- The CMS has a publicly reachable URL (or tunneled via ngrok for local testing)
-- `brand.json` at the project root is configured with your target platforms
+- A running TomorrowOS CMS (Replit, Vercel, Railway, or self-hosted)
+- A CMS URL the **panel** can reach (public HTTPS in production, or a tunnel / LAN IP for lab tests)
+- A supported panel: **Samsung Tizen 6.5 and 7.0** or **BrightSign Series 3-6**
 
 ---
 
-## Samsung Tizen
+## 1. Where the verified player package comes from
 
-### Build the player
+| Platform | Installation |
+| --- | --- |
+| **Samsung** | Install on a Samsung Tizen player via **App URL** (`https://tmr.sh/tizen`), or download the player from the CMS and install it via USB. |
+| **BrightSign** | Download the ZIP package from the CMS with `config.js` configured so that `cmsEndpoint` points to your CMS origin and install it via SD card. |
 
-From your project root:
+### Samsung (recommended path)
 
-    npx tomorrowos build --platform tizen
+**Preferred:** on the display, open **App Management** and install with **App URL**:
 
-This reads `brand.json`, applies your branding to the activation screen, and outputs:
+```txt
+https://tmr.sh/tizen
+```
 
-    dist/player-tizen.wgt
+**Alternative:** Control Panel → **Download Players → Samsung**, download the player package, then install the `.wgt` and `.html` via USB.
 
-The `.wgt` is a signed Tizen web package ready to install on any compatible Samsung commercial display.
+After install, enter your CMS URL on the on-device setup screen.
 
-### Install on the screen
+### BrightSign
 
-You have three options, depending on your setup:
+**Option A — distribution ZIP**
 
-**Option A — URL Launcher (easiest for testing)**
+1. Download `https://tmr.sh/app/brightsign/brightsign_package.zip`.
+2. Unzip and set `config.js` `cmsEndpoint` to your CMS origin (and set `orientation`).
+3. Copy files to the SD card root.
 
-1. On the Samsung display, press the remote's menu button
-2. Go to `Menu → System → Ext. Device Manager → URL Launcher Settings`
-3. Enter the URL where your `.wgt` is hosted (your CMS serves this at `/player/tizen.wgt` once built)
-4. Save and exit
-5. The display reboots and launches TomorrowOS on boot
+**Option B — from your CMS (auto-fills CMS URL)**
 
-**Option B — Tizen Studio Device Manager (for bulk deployment)**
+1. Control Panel → **Download Players → BrightSign** (`GET /players/brightsign.zip`).
+2. That zip already has `cmsEndpoint` pointed at **this** CMS origin — usually you only confirm `orientation`.
 
-1. Install Tizen Studio from samsung.com
-2. Put the display into Developer Mode (Menu → Support → Developer Mode → enter your PC's IP address)
-3. In Tizen Studio, open Device Manager
-4. Connect to your display by IP
-5. Right-click → Install App → select `dist/player-tizen.wgt`
-6. App installs and auto-launches
-
-**Option C — USB Sideload (no network needed)**
-
-1. Copy `dist/player-tizen.wgt` to a USB stick
-2. Insert USB into display
-3. On the remote, open Home → Apps → USB Sideload
-4. Select the `.wgt` file and install
-
-### Supported Tizen versions
-
-V1 supports:
-
-- SSSP 5 and newer commercial displays
-- TEP 6.5 and newer commercial displays
-
-If you have an older SSSP 4 display, you will need a firmware update or the older-generation player build (contact support).
-
-### Activation
-
-Once the player is running, the Samsung display shows the TomorrowOS activation screen branded with your logo and colours. Displayed on the screen:
-
-- Your logo (top)
-- A 6-digit activation code
-- "Enter this code at [your CMS URL]"
-- Device ID (small text, bottom)
-
-On your CMS, go to the **Pair** page, enter the 6-digit code, and press Submit. Within a few seconds the display will transition from the activation screen to your content.
+Caption in the Control Panel today: **Tizen 6.5 and 7.0**, **BrightSign Series 3-6**. 
 
 ---
 
-## BrightSign
+## 2. How the player receives the CMS endpoint
 
-### Build the player
+The two platforms differ. Using the wrong method is a common pairing failure.
 
-    npx tomorrowos build --platform brightsign
+### Samsung Tizen — on-device CMS setup
 
-Outputs:
+The Tizen `.wgt` does **not** bake a BrightSign-style `config.js` endpoint.
 
-    dist/player-brightsign.zip
+1. Install / launch the player.
+2. First boot: choose **orientation** (`landscape` / `portrait-right` / `portrait-left`).
+3. If no CMS URL is stored yet, the player shows the **CMS setup** screen.
+4. Enter the CMS HTTP(S) origin, for example:
+   - Hosted: `https://your-cms.example.com/`
+   - Lab: `http://192.168.1.105:3000/` (your PC **LAN IP**, not `localhost`)
+5. The player saves the URL in `localStorage` and converts `http://` / `https://` → `ws://` / `wss://` for the device WebSocket.
+6. Press remote **Red (A)** later to re-open orientation selection.
 
-### Install on the screen
+If you installed via App URL or a CMS USB download, enter **your CMS origin** on the setup screen (not the App URL itself).
 
-1. Copy the **contents** of `player-brightsign.zip` (not the zip itself) onto a microSD card or USB stick
-2. The root of the card should contain `autorun.brs`, the player files, and the `brand/` assets
-3. Insert the card into the BrightSign device
-4. Power on — BrightSign boots into TomorrowOS automatically
+### BrightSign — `config.js` on the storage card
 
-### Supported BrightSign versions
+BrightSign has **no** on-device CMS setup UI in the current player.
 
-- BrightSign OS 9.0 and newer
-- BrightSign OS 8.x: not supported in V1 (known local DWS API differences; support planned for V1.1)
+```js
+window.TOMORROWOS_CONFIG = {
+  cmsEndpoint: "https://your-cms.example.com/",
+  orientation: "landscape" // landscape | portrait-right | portrait-left
+};
+```
 
-### Activation
+| Field | Purpose |
+| --- | --- |
+| `cmsEndpoint` | CMS HTTP(S) URL (converted to `ws://` / `wss://` at runtime) |
+| `orientation` | Screen orientation baked into the boot config |
 
-Same as Tizen — the BrightSign displays an activation screen with your branding and a 6-digit code. Enter the code in your CMS's Pair page.
+When you download via the CMS, `cmsEndpoint` is **filled automatically** with that CMS origin. Usually you only confirm `orientation`.
 
----
+### Never use `localhost` on a panel
 
-## LG webOS Signage (V1.1)
-
-Support planned for V1.1 release. Build command will be:
-
-    npx tomorrowos build --platform webos
-
-Output: `dist/player-webos.ipk` installable via webOS Signage Manager or sideload.
-
----
-
-## Android Managed (V1.1)
-
-Support planned for V1.1 release. Build command will be:
-
-    npx tomorrowos build --platform android-managed
-
-Output: `dist/player-android.apk` with device-owner privileges required at enrolment.
-
-Generic (unmanaged) Android boxes are supported in V1.x with capability-limited functionality (see TomorrowOS protocol documentation).
+`localhost` / `127.0.0.1` on the player points at the **display itself**, not your laptop. Pairing and WebSocket will fail. Use a LAN IP, tunnel, or public HTTPS URL the panel can resolve.
 
 ---
 
-## ChromeOS Managed Kiosk (V1.x)
+## 3. Exact device installation steps
 
-Support planned for V1.x release. Deployment will be via Google Admin Console as a managed kiosk web app.
+### Samsung Tizen
 
----
+**Option A — App Management / App URL (recommended)**
 
-## Windows (V1.x)
+1. On the Samsung commercial display, open **App Management**.
+2. Choose install / add app by **App URL**.
+3. Enter:
 
-Support planned for V1.x release. Distribution as MSI installer via Group Policy or Intune.
+   ```txt
+   https://tmr.sh/tizen
+   ```
 
----
+4. Install and launch TomorrowOS.
+5. Complete orientation + CMS URL setup ([section 2](#2-how-the-player-receives-the-cms-endpoint)).
 
-## Troubleshooting
+**Option B — USB sideload (download from CMS)**
 
-### Activation screen doesn't appear
+1. Control Panel → **Download Players → Samsung**, download the player package and obtain the `.wgt`.
+2. Copy the `.wgt` and `.html` to the root folder of a USB stick.
+3. Insert USB into the display to install.
+4. Complete orientation + CMS URL setup.
 
-**Check:**
+**Option C — Tizen Studio Device Manager**
 
-- Display is powered on and has network connectivity
-- `brand.json` has `cms_endpoint` set to your publicly reachable CMS URL (it should be `wss://` for production, `ws://` only for local testing on the same network)
-- You rebuilt the player after changing `brand.json` — the CMS endpoint is baked into the `.wgt` at build time
+1. Install Tizen Studio.
+2. Enable Developer Mode on the display (enter your PC’s IP).
+3. Connect in Device Manager by IP.
+4. Right-click → Install App → select the `.wgt`.
+5. Complete orientation + CMS URL setup.
 
-### Activation code appears but pairing fails
+Signed production packages need a Samsung distributor certificate. App URL / USB paths are fine when your environment allows them.
 
-**Check:**
+### BrightSign
 
-- The code has not expired — codes are valid for 15 minutes; generate a new one by restarting the player
-- The CMS server is actually reachable from the display's network — test by opening the CMS URL in the display's browser (if available)
-- Firewall rules — the display needs to reach your CMS on WebSocket port 443 (or whatever you configured)
-
-### Replit workspaces go to sleep
-
-Replit's free tier sleeps inactive workspaces. Your screen will show "reconnecting..." when the workspace is asleep, and reconnect automatically when someone wakes it.
-
-**For production:** upgrade to Replit Hacker (Always-On) or move to Railway / Vercel / self-hosted.
-
-### Samsung display stuck on black screen after URL Launcher
-
-Check that your `.wgt` is reachable at the URL you set. Open the URL in any browser — it should download the `.wgt` file. If not, the display can't fetch it. Common causes:
-
-- URL is http:// but server redirects to https:// (Samsung doesn't follow the redirect)
-- URL requires auth (host the `.wgt` publicly)
-- File is named `.zip` instead of `.wgt` (must be `.wgt`)
-
-### BrightSign won't boot into the player
-
-Check `autorun.brs` is at the root of the SD card, not in a subfolder. BrightSign only runs `autorun.brs` from the root.
-
-### "Pairing already completed" error
-
-A device can only be paired once. If you want to re-pair (e.g. moving a screen to a new CMS), first unpair it from the current CMS (`tomorrowos.pairing.revoke(deviceId)` from your CMS server), then generate a new activation code on the device by power-cycling or running "Unpair" from the device's Settings menu (if enabled in `brand.json`).
-
-### Pairing code rolls past 15 minutes before I can enter it
-
-Power-cycle the device (or call `player.restart()` if available) to generate a fresh code.
+1. Get a player zip from either:
+   - `https://tmr.sh/app/brightsign/brightsign_package.zip`, **or**
+   - Control Panel → **Download Players → BrightSign**
+2. Unzip on a computer.
+3. If you used the distribution ZIP, edit `config.js` so `cmsEndpoint` is your CMS origin and set `orientation`.  
+   If you used the CMS download, `cmsEndpoint` is usually already filled — confirm `orientation`.
+4. Copy the **contents** of the unzipped folder (not the zip file itself) onto a microSD card or USB stick.
+5. Confirm the **root** of the card contains:
+   - `autorun.brs`
+   - `config.js`
+   - the rest of the player files
+6. Ensure only one `autorun.brs` exists (no competing BSN autorun artifacts).
+7. Insert the card into the BrightSign player.
+8. Full power-cycle the player.
+9. Wait through the initial black window (~10 seconds before `Show()` is normal).
+10. Confirm the pairing / brand UI appears.
 
 ---
 
-## Getting help
+## 4. Six-character pairing
 
-- Package issues — file a GitHub issue at `github.com/TomorrowOS/sdk`
-- Samsung-specific issues — the TomorrowOS Samsung bridge is Apache 2.0 at `github.com/TomorrowOS/player-tizen`
-- BrightSign-specific issues — `github.com/TomorrowOS/player-brightsign`
-- Commercial support — SL-X provides supported, SLA-backed deployments; see `sl-x.com`
+1. With CMS endpoint configured and network up, the player shows a **six-character** pairing code (digits and uppercase letters `0-9` / `A-Z`).
+2. In the Control Panel, open **Pair**.
+3. Enter the code exactly (the UI normalises to uppercase / strips invalid characters; length must be **6**).
+4. Submit. The CMS calls `POST /pairing/verify`.
+5. Within a few seconds the device should appear in the device list as paired / online.
+6. Publish a small image + video playlist to confirm playback.
+
+Notes:
+
+- The code is bound to the device identity in the CMS registry and is treated as a **permanent** pairing code for that serial (the same code is used again after a safe unpair).
+- If the UI is still generating / rolling the code, wait until a stable code is shown before submitting.
+- If pairing fails, see [known failure states](#7-known-failure-states) before generating confusion by reinstalling.
+
+---
+
+## 5. Tested firmware and model limitations
+
+Always record **model + firmware** from `device.info.get` before calling a fleet production-ready.
+
+### Samsung Tizen
+
+| Topic | Limitation |
+| --- | --- |
+| OS baseline | **Tizen 6.5 and 7.0** commercial displays only |
+| Older panels | SSSP 4 / older Tizen generations are out of scope without a separate player / firmware path |
+| Screenshots | `device.telemetry.captureScreen` needs commercial firmware **1080+** |
+| Orientation | First-boot intro; change later with remote **Red (A)** |
+| Capability truth | Trust live `device.info.getCapabilities` over docs tables |
+
+### BrightSign
+
+| Topic | Limitation |
+| --- | --- |
+| Control Panel caption | Series **3-6** called out as supported |
+| Series 3–6 | May work; **validate on real hardware** before fleet rollout |
+| Series 3 video | Upgrade firmware to **9.1.140+** for reliable video |
+| Series 3 4K H.264 | **Hardware limit** — use **1080p H.264**, not 4K |
+| Boot black screen | ~10s delay before UI show is normal |
+| On/off timer | Supported only when display mute API is available |
+| Capability truth | Trust live `device.info.getCapabilities` over docs tables |
+
+### Not shipping yet
+
+LG webOS, Android, and Windows players are not in this SDK release.
+
+---
+
+## 6. Safe unpair / re-pair instructions
+
+Do **not** wipe the SD card or reinstall the app as the first unpair step. Unpair in the CMS first.
+
+### Unpair (safe)
+
+1. Open the Control Panel device list.
+2. Find the device and click **Unpair** (confirms before sending).
+3. That calls `POST /pairing/unpair` with `{ "deviceId": "..." }`.
+4. The CMS removes the paired-device record. Operator display name can survive in the device registry for later.
+5. If the player is still connected, the CMS sends a `pairing.unpaired` message over the WebSocket so the player can return to the pairing UI.
+
+Programmatic equivalent on the server:
+
+```ts
+await tomorrowos.pairing.unpair(deviceId);
+```
+
+### Re-pair
+
+1. Confirm the player shows the pairing UI again (power-cycle if it did not receive the unpair push).
+2. Enter the **same six-character code** shown on the screen into Control Panel → **Pair**.
+3. Publish content again if needed (assignments were cleared with the paired record).
+
+### Moving a screen to a different CMS
+
+1. Unpair on the **old** CMS first.
+2. Point the player at the **new** CMS endpoint:
+   - Tizen: re-enter CMS URL on the setup screen (clear / change stored URL if needed, then reboot).
+   - BrightSign: download a new zip from the **new** CMS (or edit `config.js` `cmsEndpoint`), copy to SD, power-cycle.
+3. Pair on the new CMS with the on-screen code.
+
+---
+
+## 7. Known failure states
+
+| Symptom | Likely cause | What to do |
+| --- | --- | --- |
+| Pairing / WebSocket fails immediately | CMS URL is `localhost` / `127.0.0.1` on the panel | Use LAN IP, tunnel, or public HTTPS |
+| BrightSign empty / wrong `cmsEndpoint` | Distribution ZIP used without editing `config.js`, or wrong CMS download | Set `cmsEndpoint` in `config.js`, or re-download from **this** CMS (`/players/brightsign.zip`) |
+| BrightSign never boots player | `autorun.brs` not at SD root, or competing autorun | Put files at card root; only one `autorun.brs` |
+| BrightSign black for ~10s then UI | Normal boot delay | Wait; do not treat as a crash yet |
+| BrightSign Series 3 video fails | Firmware below **9.1.140** | Upgrade firmware, re-test |
+| BrightSign Series 3 4K video fails | Hardware codec limit | Re-encode to **1080p H.264** |
+| Tizen pairs but screenshot fails | Firmware below **1080** | Upgrade commercial firmware to **1080+** |
+
+---
+
+## Coming soon
+
+LG webOS, Android, and Windows apps.
 
 ---
 
 ## Glossary
 
-- `.wgt` — Tizen web package (a signed zip containing your branded player for Samsung displays)
-- **Activation screen** — the branded full-screen UI a new player shows while it waits to be paired
-- **Pairing code** — six-digit number shown on the screen, entered in the CMS to complete device registration
-- **SSSP** — Samsung Smart Signage Platform (older Tizen signage firmware generation)
-- **TEP** — Tizen Enterprise Platform (newer Samsung signage firmware generation)
-- **DWS** — BrightSign's Device Web Services (local HTTPS REST API)
-- **URL Launcher** — Samsung's built-in mechanism for loading a web app from a URL on startup
+- **`.wgt`** — Tizen web package for Samsung commercial displays
+- **Pairing code** — six-character `0-9A-Z` code shown on the screen and entered in the CMS
+- **App URL** — Samsung App Management install URL (`https://tmr.sh/tizen`)
+- **`cmsEndpoint`** — BrightSign `config.js` CMS HTTP(S) URL
+- **`POST /pairing/verify`** — Control Panel pair action
+- **`POST /pairing/unpair`** — Control Panel unpair action

@@ -1034,6 +1034,14 @@ button.danger {
   color: #0a0908;
 }
 
+.update-sdk-prompt-label {
+  margin: 0.85rem 0 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #5d554d;
+}
+
 .update-sdk-prompt {
   margin: 0;
   padding: 0.75rem 0.85rem;
@@ -1049,6 +1057,8 @@ button.danger {
 
 .update-sdk-modal-actions {
   justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .download-players-modal-card {

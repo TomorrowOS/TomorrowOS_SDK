@@ -5,7 +5,7 @@
 >
 > **On Vercel, this file is the setup questionnaire** (not `REPLIT_SETUP.md`).
 >
-> Protocol id: `vercel-setup/1.14` - pairs with `@tomorrowos/sdk` **0.9.69+** (`templates/cms-starter-v0`, Fluid Functions WebSockets).
+> Protocol id: `vercel-setup/1.14` - pairs with `@tomorrowos/sdk` **0.9.70+** (`templates/cms-starter-v0`, Fluid Functions WebSockets).
 >
 > **Questions source of truth:** `VERCEL_QUESTIONS.md` - Agents must **open that file and paste each Q block verbatim**. Do not paraphrase.  
 > **Q1/Q2 = choice questions. Q3 = form only:** open **all seven optional inputs at once**, then **HARD STOP and WAIT** for submit or "skip". Never auto-skip because fields are optional. Never ask a branding choice first. Never show only Name + Primary colour. Logo = **Upload** above **Logo URL**.  
@@ -465,7 +465,7 @@ Adapt script names / process runners as needed. **Invariant:**
 
 Use the latest published `@tomorrowos/sdk` when scaffolding (do not invent versions).
 
-Add nothing extra for Blob when using `@tomorrowos/sdk@0.9.69+` (`@vercel/blob` is bundled). Only ensure `BLOB_READ_WRITE_TOKEN` + `TOMORROWOS_MEDIA=vercel-blob` when the user chooses **Vercel Blob** in Question 2.
+Add nothing extra for Blob when using `@tomorrowos/sdk@0.9.70+` (`@vercel/blob` is bundled). Only ensure `BLOB_READ_WRITE_TOKEN` + `TOMORROWOS_MEDIA=vercel-blob` when the user chooses **Vercel Blob** in Question 2.
 
 For Preview shell only, add as needed: `next`, `react`, `react-dom`, and a process runner (`concurrently` or equivalent). These must **not** become the Production CMS.
 
@@ -736,7 +736,7 @@ The SDK auto-detects these env vars.
 
 1. Set Vercel Env Var: `BLOB_READ_WRITE_TOKEN=<token>` (if not auto-injected). Prefer the Env popup when available.
 2. Set Vercel Env Var yourself (agent-owned): `TOMORROWOS_MEDIA=vercel-blob`. **Do not** ask the user to type this.
-3. Ensure `@tomorrowos/sdk@0.9.69+` is installed (`@vercel/blob` is a transitive dependency ? no project-level Blob bridge / custom `put()` middleware).
+3. Ensure `@tomorrowos/sdk@0.9.70+` is installed (`@vercel/blob` is a transitive dependency ? no project-level Blob bridge / custom `put()` middleware).
 4. The SDK **natively** uploads via Vercel Blob when the token is present (same HTTP routes as local: `/media/upload` and chunked complete). Returned asset URLs are absolute `https://*.public.blob.vercel-storage.com/...`.
 5. Confirm Control Panel **Media Server** shows provider **Blob** (not Local). Do **not** invent status copy about "Blob bridge" or paste the URL pattern as a status detail.
 6. Do **not** proceed to Question 3 until `BLOB_READ_WRITE_TOKEN` exists (or Blob is linked and token is confirmed in the Vercel dashboard).
@@ -1013,7 +1013,7 @@ Protocol complete when:
 
 ## Protocol version
 
-`vercel-setup/1.14` - pairs with `@tomorrowos/sdk` 0.9.69+ and `VERCEL_QUESTIONS.md` 1.5.
+`vercel-setup/1.14` - pairs with `@tomorrowos/sdk` 0.9.70+ and `VERCEL_QUESTIONS.md` 1.5.
 
 **Changelog 1.14:** Vercel Blob is **SDK-native** (`BLOB_READ_WRITE_TOKEN` + `TOMORROWOS_MEDIA=vercel-blob`). No project Blob bridge. Status providers use display names (Neon, Supabase, Blob, Cloudinary, Replit Object Storage). Forbidden marketing status copy about blob URL patterns.
 
