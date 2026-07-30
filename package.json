@@ -1,6 +1,6 @@
 {
   "name": "@tomorrowos/sdk",
-  "version": "0.9.71",
+  "version": "0.9.73",
   "description": "Server SDK for building and self-hosting digital signage CMS products with TomorrowOS players.",
   "type": "module",
   "main": "./dist/index.js",
@@ -18,6 +18,8 @@
     "dist",
     "templates",
     "README.md",
+    "LICENSE",
+    "NOTICE",
     "REPLIT_SETUP.md",
     "VERCEL_SETUP.md",
     "VERCEL_QUESTIONS.md",
@@ -50,5 +52,22 @@
     "@types/ws": "^8.5.10",
     "typescript": "^5.5.0"
   },
+  "repository": {
+     "type": "git",
+     "url": "git+https://github.com/TomorrowOS/TomorrowOS_SDK"
+  },
+   "homepage": "https://docs.tomorrowos.org",
+   "bugs": {
+    "url": "https://github.com/TomorrowOS/TomorrowOS_SDK/issues"
+    },
+    "keywords": [
+      "digital-signage",
+      "cms",
+      "tizen",
+      "brightsign",
+      "device-management",
+      "websocket",
+      "typescript"
+      ],
   "license": "Apache-2.0"
 }

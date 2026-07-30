@@ -5,7 +5,7 @@
 >
 > **On Vercel, this file is the setup questionnaire** (not `REPLIT_SETUP.md`).
 >
-> Protocol id: `vercel-setup/1.14` - pairs with `@tomorrowos/sdk` **0.9.70+** (`templates/cms-starter-v0`, Fluid Functions WebSockets).
+> Protocol id: `vercel-setup/1.15` - pairs with `@tomorrowos/sdk` **0.9.70+** (`templates/cms-starter-v0`, Fluid Functions WebSockets).
 >
 > **Questions source of truth:** `VERCEL_QUESTIONS.md` - Agents must **open that file and paste each Q block verbatim**. Do not paraphrase.  
 > **Q1/Q2 = choice questions. Q3 = form only:** open **all seven optional inputs at once**, then **HARD STOP and WAIT** for submit or "skip". Never auto-skip because fields are optional. Never ask a branding choice first. Never show only Name + Primary colour. Logo = **Upload** above **Logo URL**.  
@@ -921,7 +921,32 @@ Tell the user:
 
 - **Control Panel (Publish):** `https://YOUR-PROJECT.vercel.app`
 - **TV CMS endpoint:** same HTTPS origin (players use `wss://`)
-- **Preview:** Next shell is for v0 only ??do not pair devices to Preview
+- **Preview:** Next shell is for v0 only — do not pair devices to Preview
+
+Then **you must tell the user how to install a player and pair**. Do **not** only link a file — spell out the steps:
+
+#### Samsung Tizen (6.5 and 7.0)
+
+1. On the display, open **App Management** → install via **Custom App** URL:
+
+   ```txt
+   https://tmr.sh/tizen
+   ```
+
+   Or use Control Panel → **Download Players → Samsung** and install via USB.
+2. Choose orientation, then enter the **Production** CMS URL: `https://YOUR-PROJECT.vercel.app/` (never Preview, never `localhost`).
+3. Enter the **six-character** pairing code in Control Panel → **Pair**.
+
+#### BrightSign (Series 3-6)
+
+1. On the **Production** Control Panel → **Download Players → BrightSign** (preferred — `cmsEndpoint` is filled for this CMS),  
+   or download `https://tmr.sh/app/brightsign/brightsign_package.zip` and set `cmsEndpoint` in `config.js` to `https://YOUR-PROJECT.vercel.app/`.
+2. Unzip and copy the **contents** to the SD card root (`autorun.brs`, `config.js`, player files).
+3. Power-cycle the player, wait ~10s through the black boot window, then pair with the six-character code.
+
+4. Create a playlist, upload media, **Publish** to the device.
+
+More detail: https://docs.tomorrowos.org/docs/os/tizen and https://docs.tomorrowos.org/docs/os/brightsign
 
 ### E. Minimal verification only
 
@@ -987,25 +1012,27 @@ Tell the user:
 
 ---
 
-## Final summary template (Agent ??human)
+## Final summary template (Agent — human)
 
 After setup, report:
 
 1. **Live URL** (Production Publish)
-2. **Publish health:** Framework = Other; Output ??`public`; `GET /status` ??JSON; `GET /` OK
+2. **Publish health:** Framework = Other; Output — `public`; `GET /status` — JSON; `GET /` OK
 3. **Preview note:** Next proxy shell used / not needed
-4. **Env Vars set** (names only ??never values); note which were auto-set (`TOMORROWOS_STORE`, `DATABASE_SSL`)
+4. **Env Vars set** (names only — never values); note which were auto-set (`TOMORROWOS_STORE`, `DATABASE_SSL`)
 5. **Store:** Supabase pooler or Neon pooled
 6. **Media:** Cloudinary or Vercel Blob
 7. **Brand:** name + `hostingTarget: vercel` (from optional Q3 fields; blanks = starter defaults)
-8. **Runtime split:** Preview = ??; Publish = Node TomorrowOS (confirm **not** Next)
+8. **Runtime split:** Preview = …; Publish = Node TomorrowOS (confirm **not** Next)
 9. **Open action:** if Database still ERROR, paste the pooler instruction again
+10. **Connect a screen:** include the Tizen Custom App URL / BrightSign SD install + six-character pairing steps from section **D. Deploy** above (required — do not skip)
 
 Protocol complete when:
 
 - **Preview** shows the Control Panel at `/` (via Next proxy if required), **and**
 - **Publish** returns Control Panel at `/` **and** `/status` JSON from pure Node `TomorrowOS.listen` with Fluid (not static `public/`, not `404: NOT_FOUND`, not `Unexpected token 'T'`), **and**
-- Q1?Q3 configuration is saved
+- Q1–Q3 configuration is saved, **and**
+- the user has been told how to install Tizen and/or BrightSign and pair
 
 ? even if a sandbox DB probe still flakes **after** the pooled URL is correctly set for Production.
 
@@ -1013,7 +1040,9 @@ Protocol complete when:
 
 ## Protocol version
 
-`vercel-setup/1.14` - pairs with `@tomorrowos/sdk` 0.9.70+ and `VERCEL_QUESTIONS.md` 1.5.
+`vercel-setup/1.15` - pairs with `@tomorrowos/sdk` 0.9.70+ and `VERCEL_QUESTIONS.md` 1.5.
+
+**Changelog 1.15:** After Publish is healthy, agents **must** tell the user how to install Tizen (Custom App `https://tmr.sh/tizen`) and BrightSign (CMS zip → SD root) and pair against the **Production** URL. Final summary requires this screen-connect step.
 
 **Changelog 1.14:** Vercel Blob is **SDK-native** (`BLOB_READ_WRITE_TOKEN` + `TOMORROWOS_MEDIA=vercel-blob`). No project Blob bridge. Status providers use display names (Neon, Supabase, Blob, Cloudinary, Replit Object Storage). Forbidden marketing status copy about blob URL patterns.
 

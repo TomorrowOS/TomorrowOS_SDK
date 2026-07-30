@@ -1,0 +1,50 @@
+# NOTICE
+
+**TomorrowOS**
+
+Copyright © 2026 TomorrowOS Pty Ltd
+
+Licensed under the Apache License, Version 2.0.
+
+You may obtain a copy of the License at:
+
+https://www.apache.org/licenses/LICENSE-2.0
+
+---
+
+## Trademark Notice
+
+The **TomorrowOS** name, logo, icons and associated trademarks are the property of TomorrowOS Pty Ltd and are **not licensed** under the Apache License, Version 2.0.
+
+You may accurately state that your software is **built with TomorrowOS**, but you may not:
+
+- Use the TomorrowOS name or logo to imply endorsement or affiliation.
+- Use the TomorrowOS trademarks as part of your own product, company or domain name.
+- Modify or redistribute the TomorrowOS logo as your own branding.
+- Present a modified version of TomorrowOS as the official TomorrowOS project.
+
+Please refer to **TRADEMARK.md** for the complete trademark policy.
+
+---
+
+## Open Source Notice
+
+This repository contains software released under the Apache License, Version 2.0.
+
+Commercial products, SaaS platforms, internal tools and applications built using TomorrowOS remain the intellectual property of their respective owners.
+
+TomorrowOS provides the shared infrastructure layer. Your application, user experience, business logic, branding, workflows, content and commercial offering remain yours.
+
+---
+
+## Attribution
+
+If you redistribute TomorrowOS or derivative works, please comply with the requirements of the Apache License, Version 2.0, including preserving this NOTICE file where required.
+
+---
+
+For licensing information, see:
+
+- LICENSE
+- TRADEMARK.md
+- CONTRIBUTING.md

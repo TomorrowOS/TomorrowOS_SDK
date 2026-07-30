@@ -26,12 +26,12 @@ This guide covers the full path from a verified player package to a paired scree
 
 | Platform | Installation |
 | --- | --- |
-| **Samsung** | Install on a Samsung Tizen player via **App URL** (`https://tmr.sh/tizen`), or download the player from the CMS and install it via USB. |
+| **Samsung** | Install on a Samsung Tizen player via **Custom App** (`https://tmr.sh/tizen`), or download the player from the CMS and install it via USB. |
 | **BrightSign** | Download the ZIP package from the CMS with `config.js` configured so that `cmsEndpoint` points to your CMS origin and install it via SD card. |
 
 ### Samsung (recommended path)
 
-**Preferred:** on the display, open **App Management** and install with **App URL**:
+**Preferred:** on the display, open **App Management** and install with **Custom App**:
 
 ```txt
 https://tmr.sh/tizen
