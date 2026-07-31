@@ -1,6 +1,6 @@
 {
   "name": "my-cms",
-  "version": "0.9.73",
+  "version": "1.0.0",
   "description": "CMS server on @tomorrowos/sdk. Add your UI (React, static files, etc.) alongside this server.",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "start": "tsx server.ts"
   },
   "dependencies": {
-    "@tomorrowos/sdk": "^0.9.73",
+    "@tomorrowos/sdk": "^1.0.0",
     "dotenv": "^17.2.3",
     "tsx": "^4.19.0"
   },

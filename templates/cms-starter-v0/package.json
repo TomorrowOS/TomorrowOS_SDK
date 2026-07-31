@@ -1,6 +1,6 @@
 {
   "name": "my-cms",
-  "version": "0.9.73",
+  "version": "1.0.0",
   "description": "TomorrowOS CMS for Vercel / v0 Publish (Fluid Function + WebSockets + optional Next Preview).",
   "private": true,
   "type": "module",
@@ -16,7 +16,7 @@
     "build": "node -e \"process.exit(0)\""
   },
   "dependencies": {
-    "@tomorrowos/sdk": "^0.9.73",
+    "@tomorrowos/sdk": "^1.0.0",
     "dotenv": "^17.2.3",
     "tsx": "^4.19.0"
   },

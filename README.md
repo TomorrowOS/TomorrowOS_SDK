@@ -162,8 +162,6 @@ If this README disagrees with package behaviour, treat that as a bug and report 
 
 ---
 
-## Licence and status
+## Licence
 
 **Apache 2.0.** Build commercial products on this SDK and keep your CMS proprietary - no fee, no revenue share, no requirement to open-source your application.
-
-Current release: **0.9.x** (pre-1.0). APIs may still change. Pin your version in production.
