@@ -125,16 +125,6 @@ When you download via the CMS, `cmsEndpoint` is **filled automatically** with th
 3. Insert USB into the display to install.
 4. Complete orientation + CMS URL setup.
 
-**Option C — Tizen Studio Device Manager**
-
-1. Install Tizen Studio.
-2. Enable Developer Mode on the display (enter your PC’s IP).
-3. Connect in Device Manager by IP.
-4. Right-click → Install App → select the `.wgt`.
-5. Complete orientation + CMS URL setup.
-
-Signed production packages need a Samsung distributor certificate. App URL / USB paths are fine when your environment allows them.
-
 ### BrightSign
 
 1. Get a player zip from either:
