@@ -10,6 +10,18 @@ npm install
 npm run dev
 ```
 
+### Optional CMS password
+
+Set `CMS_PASSWORD` in `.env` (or host Secrets) to lock the admin UI:
+
+```env
+CMS_PASSWORD=your-strong-password
+```
+
+- **Optional:** leave unset → Control Panel stays open (dev mode).
+- **Set later:** add the env var and restart the server.
+- Sign in at `/login` when the password is enabled.
+
 By default, the starter uses SQLite at `data/tomorrowos.db`. The database is
 created by `tomorrowos init` and the server will also create missing tables on
 startup.

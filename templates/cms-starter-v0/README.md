@@ -10,6 +10,11 @@ This starter is for **Vercel Publish** and **v0**. It follows
 - **`preview/`** — Next.js shell for v0 Preview only
 - **`vercel.json`** — `fluid`, rewrites → `/api`, `maxDuration`
 
+**Publish settings (critical):**
+- **Output Directory** = empty / unset (never `public/`)
+- **Build Command** = empty / skip (`"buildCommand": ""` in `vercel.json`) — a defined no-op `npm run build` forces Vercel static-build mode and requires `public/`
+- If the build fails with `The Output Directory "public" is empty` (or public not found): clear Output Directory **and** set Build Command to empty — do **not** add filler files under `public/`
+
 ## Scaffold
 
 ```bash
@@ -24,6 +29,10 @@ npm run dev
 ```
 
 Open `http://localhost:3000`. Pairing uses `ws://localhost:3000/` (root path).
+
+### Optional CMS password
+
+Set `CMS_PASSWORD` in `.env` or Vercel/Replit Secrets to lock the admin UI. Leave unset for open admin. Sign in at `/login` when enabled.
 
 ### v0-style Preview
 

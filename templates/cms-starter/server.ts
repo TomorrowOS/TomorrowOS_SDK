@@ -1,6 +1,9 @@
 /**
  * TomorrowOS CMS server — minimal starter.
  * Uses SQLite by default so pairings/playlists survive server restarts.
+ *
+ * Optional Control Panel lock: set CMS_PASSWORD in env / .env / host Secrets.
+ * Device WebSocket + brand.json + /devices + /uploads stay reachable without it.
  */
 
 import "dotenv/config";
@@ -8,6 +11,7 @@ import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { createTomorrowOSStore, TomorrowOS } from "@tomorrowos/sdk";
+import { attachCmsAuth } from "./cms-auth.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const brand = JSON.parse(readFileSync(join(__dirname, "brand.json"), "utf8"));
@@ -19,10 +23,21 @@ const store = createTomorrowOSStore({
 
 const tomorrowos = new TomorrowOS({ brand, store });
 
+const port = Number(process.env.PORT) || 3000;
+const host = "0.0.0.0";
+
 const server = tomorrowos.listen({
-  port: Number(process.env.PORT) || 3000,
-  host: "0.0.0.0",
+  port,
+  host,
   staticRoot: join(__dirname, "public"),
+  // Wrap `request` for optional CMS auth, then listen ourselves.
+  autoListen: false
+});
+
+attachCmsAuth(server);
+
+server.listen(port, host, () => {
+  console.log(`[TomorrowOS] listening on http://${host}:${port}`);
 });
 
 tomorrowos.on("device.paired", (event) => {

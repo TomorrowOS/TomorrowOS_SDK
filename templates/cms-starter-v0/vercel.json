@@ -3,7 +3,7 @@
   "fluid": true,
   "framework": null,
   "installCommand": "npm install",
-  "buildCommand": "npm run build",
+  "buildCommand": "",
   "functions": {
     "api/index.ts": {
       "maxDuration": 300,

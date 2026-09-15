@@ -10,6 +10,7 @@ import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { createTomorrowOSStore, TomorrowOS } from "@tomorrowos/sdk";
+import { attachCmsAuth } from "./cms-auth.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const brand = JSON.parse(readFileSync(join(__dirname, "brand.json"), "utf8"));
@@ -34,6 +35,8 @@ export const server = tomorrowos.listen({
   // autoListen defaults to false when process.env.VERCEL is set
 });
 
+// Optional CMS_PASSWORD lock for Control Panel (device paths stay open).
+attachCmsAuth(server);
 tomorrowos.on("device.paired", (event) => {
   console.log(`[TomorrowOS] device paired: ${event.deviceId}`);
   void tomorrowos.pushLatestPolicyToDevice(event.deviceId).then((r) => {

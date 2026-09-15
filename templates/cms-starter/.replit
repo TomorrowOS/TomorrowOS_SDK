@@ -7,6 +7,7 @@ run = "npm run start"
 channel = "stable-24_11"
 
 # Expose the CMS HTTP + WebSocket server (TomorrowOS Control Panel at /).
+# Publish readiness: probe GET /status (public). Do not rely on auth redirects from /.
 [[ports]]
 localPort = 3000
 externalPort = 80
@@ -15,3 +16,5 @@ externalPort = 80
 run = ["sh", "-c", "npm run start"]
 deploymentTarget = "autoscale"
 ignorePorts = false
+# Prefer Reserved VM in the Publishing UI for persistent WebSockets.
+# If the UI allows a health/readiness path, set it to /status.

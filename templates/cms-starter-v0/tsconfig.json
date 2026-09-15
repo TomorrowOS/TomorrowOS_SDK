@@ -9,5 +9,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["server.ts"]
+  "include": ["server.ts", "cms-app.ts", "cms-auth.ts", "api/**/*.ts"]
 }

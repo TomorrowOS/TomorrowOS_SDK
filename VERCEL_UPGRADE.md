@@ -40,6 +40,7 @@ When any of these triggers fire:
 4. **Do NOT** blindly overwrite `cms-panel/methods.js`, `cms-panel/index.html`, `cms-panel/panel.css`, `server.ts`, `cms-app.ts`, or `api/index.ts` with template copies. Always **diff → report → merge only with user consent** (or apply surgical patches that preserve custom code).
 5. **Do NOT** create a second `new TomorrowOS(...)` in `api/ws.ts` or elsewhere. **One** shared instance only.
 6. **Do NOT** set Vercel Output Directory to `public/` or switch Production to Next/`next start` / static-only.
+6a. **Do NOT** keep a Production Build Command of `npm run build` (even no-op) — use `"buildCommand": ""` so Vercel does not enter static-build / `public/` output checks.
 7. Prefer **`npm install @tomorrowos/sdk@latest`** over pinning an older version unless the user named a specific version.
 8. Keep `tsx` available at runtime (`dependencies`, not only `devDependencies`) if local `npm run start` / Preview still relies on `tsx server.ts`.
 9. After upgrade, re-check Production gates: `GET /status` → JSON, `GET /` → Control Panel, WebSocket `/` or `/api` → **101**.
@@ -54,7 +55,7 @@ Capture and remember:
 |------|-----|
 | **Old SDK version** | `package.json` → `dependencies["@tomorrowos/sdk"]`, and/or `npm ls @tomorrowos/sdk --depth=0` |
 | **Layout** | Confirm `cms-starter-v0` shape: `cms-app.ts` / `api/index.ts` / `cms-panel/` (or equivalent shared TomorrowOS export) |
-| **Runtime** | Confirm Fluid Function + `vercel.json` rewrites; Output Directory empty |
+| **Runtime** | Confirm Fluid Function + `vercel.json` rewrites; Output Directory empty; **Build Command empty** (`"buildCommand": ""`) |
 
 If `@tomorrowos/sdk` is not a dependency, stop and tell the user this project does not look like a TomorrowOS CMS — offer `VERCEL_SETUP.md` instead. Do **not** run `init` unless they explicitly switch to setup.
 

@@ -5,10 +5,15 @@
 >
 > **On Vercel, this file is the setup questionnaire** (not `REPLIT_SETUP.md`).
 >
-> Protocol id: `vercel-setup/1.15` - pairs with `@tomorrowos/sdk` **0.9.70+** (`templates/cms-starter-v0`, Fluid Functions WebSockets).
+> Protocol id: `vercel-setup/1.19` - pairs with `@tomorrowos/sdk` **0.9.70+** (`templates/cms-starter-v0`, Fluid Functions WebSockets).
 >
 > **Questions source of truth:** `VERCEL_QUESTIONS.md` - Agents must **open that file and paste each Q block verbatim**. Do not paraphrase.  
-> **Q1/Q2 = choice questions. Q3 = form only:** open **all seven optional inputs at once**, then **HARD STOP and WAIT** for submit or "skip". Never auto-skip because fields are optional. Never ask a branding choice first. Never show only Name + Primary colour. Logo = **Upload** above **Logo URL**.  
+> **Q1/Q2 = clickable choice UI (same pattern):** open a **button / radio / option-card UI** with the two fixed choices. Do **not** ask the user to type `1` or `2` in chat when a choice UI is available. Chat “reply 1 or 2” is fallback only.  
+> **Q3 = form only:** open **all seven optional inputs at once**, then **HARD STOP and WAIT** for submit or "skip". Never auto-skip because fields are optional. Never ask a branding choice first. Never show only Name + Primary colour. Logo = **Upload** above **Logo URL**.  
+> **Q4 = optional `CMS_PASSWORD` (immediately after Q3, no prelude):** open the **CMS password Env/Secret input** right away. Blank/skip is valid. **Forbidden:** yes/no “Do you want a password / enable auth?” before the field. Control Panel auth only — never Vercel Deployment Protection / whole-site password.  
+> **After Q&A (before debugging DB):** run **IRON GATE — v0 Preview hygiene** (clear root Next leftovers, restart supervised `dev`, prove `GET /status` is TomorrowOS JSON). Do **not** spend turns “fixing Neon/Blob” while port 3000 is still a stale Next/Turbopack process.  
+> **Publish Output Directory:** must stay **empty / unset**.  
+> **Publish Build Command:** must be **empty / skip build** (`"buildCommand": ""` in `vercel.json` + dashboard). A defined build command (even a no-op `npm run build`) forces Vercel **static-build** mode and requires `public/` — that causes `Output Directory "public" is empty` / not found. Do **not** “fix” by stuffing `public/robots.txt`.  
 > **Copy questions verbatim from `VERCEL_QUESTIONS.md`.** Do not invent alternate Q2 options (no "Supabase Storage", no S3, no "disable media", no making Blob the recommended option).  
 > **`TOMORROWOS_STORE` and `DATABASE_SSL` are agent-only** - set them automatically after Q1; never put them in a user-facing Env form for the customer to type.
 
@@ -18,6 +23,8 @@ The following rules are **mandatory acceptance criteria**, not suggestions. The 
 
 1. **One TomorrowOS instance only.** Use the shared instance exported through `api/index.ts`. **Never create a second `TomorrowOS` instance in `api/ws.ts`** or any other route.
 2. **Never use `public/` as the Vercel Output Directory.** The dashboard Output Directory must be **empty / unset**. Serve the Control Panel at runtime from `cms-panel/` through TomorrowOS `staticRoot`.
+2a. **Build Command must be empty / skip build** (`"buildCommand": ""` in `vercel.json`, dashboard Build Command empty). Do **not** use a no-op `npm run build` / `node -e "process.exit(0)"` as the Production build command — any defined build command with Framework=Other puts Vercel in **static-build** mode and requires a `public/` output directory.
+2b. **Build errors `The Output Directory "public" is empty` or `public` not found:** First clear Output Directory if it is set to `public`. If Output is already null and the error remains, the cause is a **defined Build Command** — set Build Command / `buildCommand` to **empty string** and redeploy. Filling `public/` only papers over wrong static-output mode.
 3. **Preview may use Next only as an isolated reverse-proxy shell under `preview/`.** Preview must not replace TomorrowOS or determine the Production runtime.
 4. **Publish must use the Fluid Function.** Production must run `api/index.ts` ??the shared exported `http.Server`, with Fluid compute enabled. It must not use `next start`, a static export, or a bare `(req, res)` handler.
 5. **After every Production deployment, verify all three gates before saying setup is complete:**
@@ -37,10 +44,14 @@ When a human pastes a prompt like this, **read this file and start Question 1 im
 Follow @tomorrowos/sdk (an NPM package) VERCEL_SETUP.md and set up my TomorrowOS CMS from scratch.
 
 Open VERCEL_QUESTIONS.md first.
-For Q1, Q2, Q3: paste each question block VERBATIM. Do not rephrase options.
+For Q1 and Q2: open a **clickable choice UI** (buttons / radio / option cards) using the verbatim options from VERCEL_QUESTIONS.md. Do not ask me to type 1 or 2 in chat when UI is available.
+For Q1, Q2, Q3: use exact option wording from VERCEL_QUESTIONS.md. Do not rephrase options.
 For Q3: DO NOT ask a branding choice. Open one form with ALL SEVEN optional inputs at once, then HARD STOP and WAIT for my submit or "skip". Never auto-continue with defaults without my reply. Never only Name + Primary colour. Logo = Upload above Logo URL.
+After Q3, open Q4 immediately: one Env/Secret input for CMS_PASSWORD (blank/skip OK). Do NOT ask yes/no "want a password?" first.
 After Q1 database choice, YOU set TOMORROWOS_STORE and DATABASE_SSL. Do not ask me to fill those.
 After Q2 media storage choice, YOU set TOMORROWOS_MEDIA. Do not ask me to fill those.
+After answers: run IRON GATE v0 Preview hygiene BEFORE debugging Postgres/media — clear root Next leftovers, restart supervised dev, prove GET /status is TomorrowOS JSON.
+Before Publish: Output Directory empty/unset (NOT public). Build Command EMPTY (buildCommand: "") — never a no-op npm run build (forces static public/ check). Do not stuff public/robots.txt.
 Run: npx @tomorrowos/sdk@latest init . --hosting v0 --force
 Keep cms-starter-v0 layout.
 Apply the NON-NEGOTIABLE VERCEL RUNTIME CONTRACT exactly:
@@ -102,8 +113,8 @@ almost always means **Vercel still thinks this is a Next.js / static deploy**, n
    If it still says **Next.js**, patch it via Vercel API / CLI / dashboard **before** redeploying.  
    `"framework": null` in `vercel.json` alone is **not enough** if the dashboard still says Next.js.
 2. **Install Command** = `npm install` / `pnpm install` / `yarn` (normal install).
-3. **Build Command** = a **no-op that exits 0** (e.g. `node -e "process.exit(0)"` or `npm run build` where `build` is that no-op).  
-   **Never** run `next build` for Production.
+3. **Build Command** = **empty / skip build** (`""` in `vercel.json` and dashboard).  
+   **Never** run `next build` for Production. **Never** use a no-op `npm run build` / `node -e "process.exit(0)"` as the Production build command — that forces static-build mode and the `public/` output check.
 4. **Production entry** = Fluid **Vercel Function** `api/index.ts` that **`export default server`** from shared `cms-app.ts` (see [WebSockets docs](https://vercel.com/docs/functions/websockets)). Local `npm start` may still use root `server.ts`.
 5. **Output Directory** = **empty / unset**. Do **not** set `outputDirectory: "."` as a fake static site.
 6. **Do** use a single `api/index.ts` that exports the TomorrowOS `http.Server`. **Do not** create a second TomorrowOS in `api/ws.ts`, and **do not** use bare `(req, res)` handlers that drop upgrades.
@@ -113,18 +124,47 @@ almost always means **Vercel still thinks this is a Next.js / static deploy**, n
 
 **Setup is NOT complete** while Production `GET /` returns `404: NOT_FOUND` or WebSocket upgrade returns 200 HTML.
 
-### Publish static trap ??`public/` served without Node (read this)
+### Publish static trap — `public/` served without Node (read this)
 
-A common **worse** failure mode than `404: NOT_FOUND`:
-
-- `GET /` loads the Control Panel HTML (from static `public/index.html`)
+**Symptom A — wrong runtime (common worse failure than `404: NOT_FOUND`):**
+- `GET /` loads the Control Panel HTML (from static files)
 - `GET /status`, `/devices`, etc. return **HTML** (Vercel 404 page)
 - The panel shows **CMS unreachable** and console:  
   `Unexpected token 'T', "The page c"... is not valid JSON`
 
-**Root cause:** Vercel deployed `public/` as a **static site** (Output Directory = `public` or Framework=Other default *?public if it exists??). **No Function** is running TomorrowOS.
+**Root cause A:** Vercel deployed `public/` as a **static site** (Output Directory = `public` or Framework=Other default “public if it exists”). **No Function** is running TomorrowOS.
 
-**Fix (Scheme A):** use `cms-panel/` (not `public/`), Fluid Function `api/index.ts` + rewrites, Output Directory empty. Static UI is served **at runtime** via `staticRoot` in `listen()`.
+**Symptom B — build fails before deploy:**
+```text
+Error: The Output Directory "public" is empty.
+```
+or (after deleting `public/`):
+```text
+No Output Directory named "public"
+```
+(wording may vary; both mean Vercel is in **static-build** mode looking for `public/`)
+
+**Root cause B (check in order):**
+1. Project Settings **Output Directory = `public`** (explicit override) — clear it.
+2. Output Directory is already **null**, but a **Build Command is defined** (`npm run build` or any no-op). With Framework=Other, a defined build command forces static-build mode and defaults the output check to `public/` — even when dashboard Output is unset.
+
+**Correct fix (mandatory for A and B):**
+
+1. Set **Output Directory** = **empty / unset**.
+2. Set **Build Command** = **empty** (`"buildCommand": ""` in `vercel.json` + dashboard). This is a **functions-only** deploy; skip the static build step entirely.
+3. Framework Preset = **Other** / null; Fluid on; `api/index.ts` + rewrites per Scheme A.
+4. Redeploy. Verify `GET /status` is **JSON** and WebSocket is **101**.
+
+**Forbidden “fixes”:**
+
+- Adding `public/robots.txt` / `.gitkeep` **so a static Output Directory = `public` build passes** — that leaves Production on the static trap path.
+- Keeping a no-op `buildCommand: "npm run build"` while hoping Output=null is enough — the defined build command still triggers the `public/` check.
+- Setting Output Directory to `cms-panel`, `.`, or `public`.
+- Claiming Publish succeeded because the build log turned green while Output is still `public` or Build Command still runs a static check.
+
+**Optional:** If some tooling creates an empty `public/` folder, delete it or ignore it — **never** point Output Directory at it.
+
+**Scheme A reminder:** use `cms-panel/` (not `public/`), Fluid Function `api/index.ts` + rewrites, Output Directory empty. Static UI is served **at runtime** via `staticRoot` in `listen()`.
 
 **Publish gate (mandatory):** after deploy, `GET /status` must return **JSON** starting with `{`, not HTML starting with `<` or `The page`. **And** WebSocket upgrade on `/` or `/api` must return **101**.
 
@@ -163,9 +203,14 @@ Ask **only** these questions, in **this exact order**. **Copy the ?Ask exactly??
 |------|---------|------|
 | 1 | **Question 1** ? Database (Supabase ? Neon) | Always |
 | 2 | **Question 2** ? Media (**Cloudinary recommended** ? Vercel Blob) | Always (after Q1) |
-| 3 | **Question 3** - Brand form (`brand.json` only; **not a choice** - open all 7 optional inputs at once) | Always last |
+| 3 | **Question 3** - Brand form (`brand.json` only; **not a choice** - open all 7 optional inputs at once) | Always (after Q2) |
+| 4 | **Question 4** - Optional CMS password Env `CMS_PASSWORD` (**immediately after Q3**; blank = skip; **no** yes/no prelude) | Always last |
 
-**That is the complete list.** Do **not** ask how many screens / devices.
+**That is the complete list (Q1–Q4).** Do **not** ask how many screens / devices.
+
+| Step UX | Rule |
+|---------|------|
+| Q4 CMS password | **Immediately after Q3** — one Env/Secret input for `CMS_PASSWORD` (blank/skip allowed). **Never** ask a yes/no "do you want a password?" first. |
 
 **Forbidden invented Question 2 options (never offer these in chat or UI):**
 
@@ -185,7 +230,7 @@ Ask **only** these questions, in **this exact order**. **Copy the ?Ask exactly??
 - ??OpenAI / Anthropic / Gemini / any LLM API key (`sk-?`, etc.)
 - ???AI pairing?? ?AI feature logic?? or inventing auth that needs an LLM key
 - ??Asking the user to type `TOMORROWOS_STORE` or `DATABASE_SSL`
-- ??Any secret not listed in Questions 1?? (DB URL, media credentials, brand)
+- Any secret not listed in Questions 1–4 (DB URL, media credentials, brand, optional `CMS_PASSWORD`)
 
 TomorrowOS pairing and Control Panel logic live in `@tomorrowos/sdk`. They do **not** call OpenAI.
 
@@ -193,7 +238,7 @@ If the user **skips** a Question 2 option, do **not** invent a substitute questi
 
 If the user says ?just set it up, don?t ask questions,??respond:
 
-> I need a few quick answers from VERCEL_SETUP.md (database ??Supabase or Neon preferred ??media storage with Cloudinary recommended, and branding). It takes about a minute and ensures the CMS works on Vercel.
+> I need a few quick answers from VERCEL_SETUP.md (database — Supabase or Neon preferred — media storage with Cloudinary recommended, branding, and optional CMS password). It takes about a minute and ensures the CMS works on Vercel.
 
 Then ask **Question 1**.
 
@@ -201,7 +246,9 @@ Then ask **Question 1**.
 
 ## Hard rules
 
-1. **Open `VERCEL_QUESTIONS.md` first.** Paste Q1 ??configure ??paste Q2 ??configure ??paste Q3. Never paraphrase question options. Never use `REPLIT_SETUP.md` as the questionnaire. **Never** ask for OpenAI or other LLM API keys.
+1. **Open `VERCEL_QUESTIONS.md` first.** Ask Q1 → configure → Q2 → configure → Q3 → Q4. Never paraphrase question options. Never use `REPLIT_SETUP.md` as the questionnaire. **Never** ask for OpenAI or other LLM API keys.
+1a. **Q1 and Q2 UX:** Prefer a **clickable choice UI** (same pattern for both): two option buttons/cards matching the verbatim labels. **Forbidden when UI exists:** chat-only “Reply with 1 or 2”. Chat typing is fallback only if the platform cannot render choices.
+1b. **Q4 UX:** Immediately after Q3, open the **`CMS_PASSWORD` Env/Secret input**. **Forbidden:** yes/no “Do you want a password / enable auth?” prelude. Blank/skip is a complete answer.
 2. **Question 2 options are fixed:** (1) Cloudinary **(recommended)**, (2) Vercel Blob. Do not reorder; do not invent Supabase Storage, local disk, or disable-uploads.
 3. **Cloudinary:** open **one** Vercel Env popup with **all** Cloudinary fields together. Do **not** quiz one credential at a time.
 4. **`TOMORROWOS_STORE` + `DATABASE_SSL` = agent-owned.** After Q1 choice (and URL if needed), set them yourself in Vercel Env Vars. **Never** include them as blank fields for the customer. Mapping: Supabase ? `TOMORROWOS_STORE=supabase` + `DATABASE_SSL=true`; Neon ? `TOMORROWOS_STORE=postgres` + `DATABASE_SSL=true`. **Do not offer SQLite as a questionnaire choice** ? it is ephemeral on Vercel and unsuitable for production.
@@ -217,15 +264,78 @@ Then ask **Question 1**.
 14. **Preview:** Next reverse-proxy shell when v0 is Next-hardwired.
 15. After Q&A: **configure ??install ??deploy ??minimal verify**.
 16. **No inventing CMS login** from a branding URL.
-17. **Skip ??invent.** Stay on Q1?Q3 only.
+17. **Skip → invent.** Stay on Q1–Q4 only.
 18. **Publish gate:** `/status` JSON + WebSocket 101; no static `public/` trap.
-19. **Q3 is a form, not a question ? and you must WAIT.** After Q2, open one dialog with **all seven** optional inputs visible together, then **stop and wait** for submit or explicit **"skip"**. **Never** auto-continue because fields are optional. **Never** ask a preliminary branding choice. **Never** show only Product Name + Primary colour. **Never** use multiple-choice / Option A-B for branding. Logo = **Upload** above **Logo URL**.
+19. **Q3 is a form, not a question — and you must WAIT.** After Q2, open one dialog with **all seven** optional inputs visible together, then **stop and wait** for submit or explicit **"skip"**. **Never** auto-continue because fields are optional. **Never** ask a preliminary branding choice. **Never** show only Product Name + Primary colour. **Never** use multiple-choice / Option A-B for branding. Logo = **Upload** above **Logo URL**.
+20. **IRON GATE after Q&A:** Before blaming Neon / Blob / migrations, complete **IRON GATE — v0 Preview hygiene** below. Preview 500s are usually leftover root Next or a stale supervised `next-server`, not a bad Q1/Q2 choice.
 
-**Question order:** Q1 -> (auto-set store env) -> Q2 -> Q3 form (**wait for user**) -> execution checklist.
+**Question order:** Q1 -> (auto-set store env) -> Q2 -> Q3 form (**wait for user**) -> Q4 `CMS_PASSWORD` Env input (**no yes/no prelude**; blank/skip OK) -> **IRON GATE** -> execution checklist.
 
 ---
 
-## Scheme A ??Vercel Functions + WebSockets (mandatory for Production)
+## IRON GATE — v0 Preview hygiene (run after Q&A, before DB rabbit holes)
+
+> **Why this exists:** On v0, agents often answer Q1–Q3, run `init`, then spend a long time “fixing Postgres” while port **3000** is still the original **Next/Turbopack** starter (or a manually spawned `tsx` without injected env). Neon vs Blob choices are **not** the usual cause.
+
+### Do this in order — stop when each check passes
+
+1. **Identify what owns `:3000` (empirical, 30 seconds)**  
+   - If process/logs look like `next-server` / Turbopack / `ENOENT .../app` → you are **not** talking to TomorrowOS yet.  
+   - If `GET /status` returns TomorrowOS **JSON** (`{"status":...}`) → proceed.  
+   - **Forbidden:** debugging `DATABASE_URL` / Neon pooler while `/status` is HTML, Next error overlay, or Turbopack crash.
+
+2. **Clear forbidden root Next leftovers (from the original v0 starter)**  
+   Remove from **project root** (keep the SDK shell under `preview/`):  
+   `app/`, `pages/`, root `next.config.*`, root `next-env.d.ts`, root `postcss.config.*`, leftover `components/` / `lib/` from the starter, `components.json` — anything that makes Framework detection or v0 Preview latch onto Next at root.  
+   **Do not** delete `preview/` (that is the sanctioned Next reverse-proxy shell).  
+   Empty leftover dirs after deleting files.
+
+3. **Confirm scripts + layout**  
+   - Root `package.json` `"dev"` / `"start"` run TomorrowOS (`tsx` …), not `next dev` at root.  
+   - `preview/` exists if Preview stays Next-hardwired; use `dev:preview` (Next public + TomorrowOS on **3001**) when required.  
+   - `cms-panel/` (or template static root) is TomorrowOS UI — **not** Vercel Output Directory `public/`.
+
+4. **Restart the platform-supervised `dev` — do not double-bind**  
+   - After rewriting `package.json` scripts, the **old** supervised `next-server` may still hold `:3000`. Kill/restart so the supervisor re-execs the **new** `dev` script.  
+   - **Forbidden:** spawning a second manual `pnpm dev` / `tsx` that fights the supervised process (`EADDRINUSE`) **and** lacks v0-injected env.  
+   - Prefer the **v0/Vercel managed** process (it inherits injected secrets). Only start TomorrowOS yourself if you also load the same env (see **Env loading trap**).
+
+5. **Prove TomorrowOS before touching DB**  
+   - `GET /status` → **200 JSON** from TomorrowOS (not Next HTML, not `The page could not be found`).  
+   - `GET /` → Control Panel HTML (or CMS login HTML if `CMS_PASSWORD` set).  
+   - Only **then** interpret Database/Media connector errors as real store/media issues.
+
+### Env loading trap (v0 / Preview vs Production)
+
+| Context | How secrets arrive | What `import "dotenv/config"` sees |
+|---------|-------------------|-------------------------------------|
+| **Production Deploy** | Vercel injects into `process.env` | N/A — platform env wins |
+| **v0 / Agent Preview** | Often written to **`.env.development.local`** (and/or injected only into the **supervised** Node process) | **Only `.env`** by default — **not** `.env.development.local` |
+| **Manual Bash `pnpm dev`** | Usually **no** injected `DATABASE_URL` / Blob token unless you export them | Easy false “Postgres broken” |
+
+**Rules:**
+
+- Non-secret flags may live in committed `.env` (`TOMORROWOS_STORE`, `DATABASE_SSL`, `TOMORROWOS_MEDIA`).  
+- Secrets (`DATABASE_URL`, `SUPABASE_URL`, `BLOB_READ_WRITE_TOKEN`, `CMS_PASSWORD`, Cloudinary keys) belong in **Vercel Env** / v0 injection — never commit them.  
+- If logs say store=`postgres` but `DATABASE_URL` is missing in a **manual** process: load `.env` **and** `.env.development.local`, or restart the **supervised** server — do **not** immediately change Neon URLs.  
+- Preview flakes ≠ Production failure. Fix Preview hygiene first; do not “repair” Production Framework because Preview 500’d.
+
+### Preview decision tree (after hygiene)
+
+```
+Is GET /status TomorrowOS JSON on the Preview URL?
+  YES → continue checklist (Publish gates still required).
+  NO → What owns the public port?
+        next-server / Turbopack / ENOENT app/ → clear root Next + restart supervised dev (steps 2–4).
+        tsx TomorrowOS listening but Preview blank → v0 still hardwires Next: use preview/ reverse-proxy + TOMORROWOS_INTERNAL_PORT=3001 + dev:preview.
+        EADDRINUSE :3000 → kill stale Next/tsx; one process only.
+```
+
+**Reminder:** Q1 Neon / Q2 Blob are valid protocol choices. A long Preview outage after those answers is almost always **process/layout/env injection**, not “wrong database/media product.”
+
+---
+
+## Scheme A — Vercel Functions + WebSockets (mandatory for Production)
 
 > **Goal:** Preview may use Next + proxy; **Publish** runs TomorrowOS as a **Vercel Function** (`api/index.ts`) on **Fluid**, with WebSocket support per [Vercel WebSockets docs](https://vercel.com/docs/functions/websockets).  
 > **Scope:** Layout + `vercel.json` + dashboard. Prefer `npx @tomorrowos/sdk@latest init --hosting v0` (`cms-starter-v0`).  
@@ -322,7 +432,7 @@ SDK behaviour (0.9.32+):
   "fluid": true,
   "framework": null,
   "installCommand": "npm install",
-  "buildCommand": "npm run build",
+  "buildCommand": "",
   "functions": {
     "api/index.ts": {
       "maxDuration": 300,
@@ -336,7 +446,7 @@ SDK behaviour (0.9.32+):
 }
 ```
 
-**`maxDuration` plan limits:** Hobby / many default plans allow **1??00** seconds. **800** requires a higher Vercel plan. Prefer **`300`** unless the account already allows more ??otherwise Publish fails with *?maxDuration must be between 1 and 300??upgrade your plan??.
+**`maxDuration` plan limits:** Hobby / many default plans allow **1–300** seconds. **800** requires a higher Vercel plan. Prefer **`300`** unless the account already allows more — otherwise Publish fails with *maxDuration must be between 1 and 300 / upgrade your plan*.
 
 **Why rewrites:** Public URLs stay `https://app.vercel.app/` and `/status` while the Function mount is `/api`. Device `wss://app.vercel.app/` is rewritten to the same Function so one isolate handles HTTP + WS.
 
@@ -346,19 +456,26 @@ SDK behaviour (0.9.32+):
 
 - `"fluid": true` is required for WebSockets
 - **Do not** set `outputDirectory` to `cms-panel` / `public`
-- `"buildCommand"` = no-op ??**never** `next build` for Production
-- Dashboard Output Directory must stay **empty**
+- `"buildCommand": ""` — **skip build entirely** (functions-only). **Never** `next build`. **Never** a no-op `npm run build` as Production build (forces static `public/` check)
+- Dashboard Output Directory must stay **empty**; dashboard Build Command must stay **empty** (or match `""`)
 
-### A4 ??Vercel Project Settings (dashboard ??mandatory)
+### A4 — Vercel Project Settings (dashboard — mandatory)
 
 | Setting | Required value |
 |---------|----------------|
-| Framework Preset | **Other** / null ??**not Next.js** |
+| Framework Preset | **Other** / null — **not Next.js** |
 | Install Command | `npm install` |
-| Build Command | `npm run build` (no-op) |
-| **Output Directory** | **empty** |
+| **Build Command** | **empty / skip** — **not** `npm run build` |
+| **Output Directory** | **empty / unset** — **never `public`** |
 | Fluid compute | **On** |
-| WebSockets | Account must allow Functions WebSockets (see docs ?Permissions Required?? |
+| WebSockets | Account must allow Functions WebSockets (see docs — Permissions Required) |
+
+**If Publish build fails with `The Output Directory "public" is empty` or `public` not found:**
+1. Clear Output Directory if set to `public`.
+2. If Output is already null: set **Build Command** / `vercel.json` `"buildCommand"` to **`""`** and redeploy. A defined build command (even no-op) forces static-build mode.
+3. Do **not** add `public/robots.txt` as the primary fix.
+
+**`vercel.json` must not set `outputDirectory`.** Leaving it out is correct. **`buildCommand` must be `""`** (empty string), not omitted if the dashboard still has a leftover `npm run build` — set both file and dashboard.
 
 ### A5 ??Publish acceptance (all must pass)
 
@@ -435,7 +552,7 @@ Adapt script names / process runners as needed. **Invariant:**
 
 - **Local `npm start`** = TomorrowOS Node with `server.listen`.
 - **Vercel Production** = Function `api/index.ts` (SDK `autoListen=false` when `VERCEL` is set).
-- **`build`** = no-op exit 0 (never `next build` for Production).
+- **`vercel.json` `"buildCommand"`** = `""` (skip build). Optional `package.json` `"build"` no-op is unused by Vercel Publish — **never** wire it as the Production Build Command.
 - **Preview / v0** = Next on public port + TomorrowOS on internal port + proxy.
 
 ### Minimal dependencies (Production)
@@ -509,12 +626,14 @@ const server = tomorrowos.listen({
 export default server;
 ```
 
-- **Production:** `PORT` from Vercel ??TomorrowOS listens on that port (no Next).
+- **Production:** `PORT` from Vercel — TomorrowOS listens on that port (no Next).
 - **Preview:** set `TOMORROWOS_INTERNAL_PORT=3001` (or similar) so Next can own `:3000` and proxy inward.
 
-Load env with `dotenv` for local/`vercel dev`. On production Deploy, Vercel injects Environment Variables natively.
+Load env with `dotenv` for local/`vercel dev` (loads **`.env` only**). On production Deploy, Vercel injects Environment Variables natively.
 
-### Preview adapter (v0 / Next reverse proxy) ??required when Preview is Next-hardwired
+**v0 / Preview caveat:** platform secrets often land in **`.env.development.local`** or only in the **supervised** process env. TomorrowOS `import "dotenv/config"` does **not** auto-load `.env.development.local`. See **IRON GATE — Env loading trap**. Never treat a manual Bash server missing `DATABASE_URL` as proof that Neon is misconfigured.
+
+### Preview adapter (v0 / Next reverse proxy) — required when Preview is Next-hardwired
 
 Detect Preview / v0 (Next already present, or Preview blank while TomorrowOS logs ?listening??. Then:
 
@@ -550,23 +669,23 @@ Write `vercel.json` so Production cannot be mistaken for Next. Minimum:
   "fluid": true,
   "framework": null,
   "installCommand": "npm install",
-  "buildCommand": "npm run build"
+  "buildCommand": ""
 }
 ```
 
-Use `pnpm` / `yarn` variants of install/build if that is the project?s package manager.
+Use `pnpm` / `yarn` variants of install if that is the project's package manager. **`buildCommand` must be `""`** (skip build) — do **not** set `npm run build` even as a no-op.
 
-**Do not** add `startCommand`, `processes`, or `outputDirectory` to `vercel.json` when v0 schema rejects them. Start = `package.json` `"start": "tsx server.ts"`. Output Directory = **empty in dashboard**.
+**Do not** add `startCommand`, `processes`, or `outputDirectory` to `vercel.json` when v0 schema rejects them. Start = `package.json` `"start": "tsx server.ts"`. Output Directory = **empty in dashboard**. Build Command = **empty in dashboard**.
 
-**Also force Project Settings (dashboard or Vercel API) ??this is mandatory (see Scheme A4):**
+**Also force Project Settings (dashboard or Vercel API) — this is mandatory (see Scheme A4):**
 
 | Setting | Required value |
 |---------|----------------|
-| Framework Preset | **Other** / null ??**not Next.js** |
+| Framework Preset | **Other** / null — **not Next.js** |
 | Install Command | `npm install` (or pnpm/yarn) |
-| Build Command | `npm run build` (no-op exit 0) |
-| Output Directory | **empty / null** ??**NOT `public`** |
-| Start Command | `npm run start` ??`tsx server.ts` (or `.mts`) ??set in **dashboard**, not `vercel.json` |
+| **Build Command** | **empty / skip** — **not** `npm run build` |
+| Output Directory | **empty / null** — **NOT `public`** |
+| Start Command | `npm run start` — `tsx server.ts` (or `.mts`) — set in **dashboard**, not `vercel.json` |
 | Fluid compute | **On** |
 
 If `next` / `next.config.*` exist for Preview and the dashboard still auto-selects Next.js:
@@ -610,17 +729,26 @@ If Vercel?s UI and this file disagree on bundling, **prefer whatever keeps a sin
 
 If you open an Env configuration UI for Q1, fields visible to the user may include **only** `SUPABASE_URL` or `DATABASE_URL`. **Do not** show blank `TOMORROWOS_STORE` / `DATABASE_SSL` inputs ? write those yourself in the same step.
 
-### Step A ? Ask storage choice
+### Step A — Ask database choice (**clickable UI required**)
 
-**Ask exactly:**
+**UX:** Open a **choice UI** the user can **click** — two option buttons / radio cards / select list. Labels must match the verbatim options below. Same clickable pattern as Q2.
+
+| # | Exact option label (UI) |
+|---|-------------------------|
+| 1 | **Supabase Postgres (recommended)** |
+| 2 | **Neon Postgres** |
+
+Supporting copy under each option may match `VERCEL_QUESTIONS.md`. **Do not** default to a chat message that only says “Reply with 1 or 2” when the platform can render choices.
+
+**Ask exactly (wording / option text must match):**
 
 > Which database should TomorrowOS use on Vercel?
 >
-> **1. Supabase Postgres (recommended)** ? durable pairing/playlists; use the **Session pooler** URL (`*.pooler.supabase.com:6543`).
+> **1. Supabase Postgres (recommended)** — durable pairing/playlists; use the **Session pooler** URL (`*.pooler.supabase.com:6543`).
 >
-> **2. Neon Postgres** ? serverless Postgres native to Vercel; use Neon's **pooled** connection string from the Neon dashboard (not the direct un-pooled host for serverless).
->
-> Reply with **1** or **2** (or "Supabase" / "Neon").
+> **2. Neon Postgres** — serverless Postgres native to Vercel; use Neon's **pooled** connection string from the Neon dashboard (not the direct un-pooled host for serverless).
+
+**Fallback only** (no choice UI available): allow chat reply **1** / **2** / "Supabase" / "Neon".
 
 ### Step B ??If **1 / Supabase**
 
@@ -676,19 +804,26 @@ If you open an Env configuration UI for Q1, fields visible to the user may inclu
 > It is **not** about OpenAI, AI pairing, or LLM keys. If you are about to ask for an `sk-` key, **stop** ??you are off-protocol.  
 > **Copy the two options below verbatim.** Wrong examples that must **never** appear: "Vercel Blob (recommended)", "Supabase Storage", "No media storage / disable uploads", "local disk only".
 
-### Step A ? Ask storage choice
+### Step A — Ask storage choice (**clickable UI required — same as Q1**)
 
-**Ask exactly (wording must match ? Cloudinary is recommended):**
+**UX:** Open a **choice UI** the user can **click** — two option buttons / radio cards. **Forbidden when UI exists:** chat-only “Reply with **1** or **2**”.
+
+| # | Exact option label (UI) |
+|---|-------------------------|
+| 1 | **Cloudinary (recommended)** |
+| 2 | **Vercel Blob** |
+
+**Ask exactly (wording must match — Cloudinary is recommended):**
 
 > How should playlist media (images/videos) be stored?
 >
-> **1. Cloudinary (recommended)** ? durable public HTTPS URLs (`https://res.cloudinary.com/...`). Works out of the box with `@tomorrowos/sdk` auto-detection. **Prefer this on Vercel.**
+> **1. Cloudinary (recommended)** — durable public HTTPS URLs (`https://res.cloudinary.com/...`). Works out of the box with `@tomorrowos/sdk` auto-detection. **Prefer this on Vercel.**
 >
-> **2. Vercel Blob** ? Vercel-native object storage; durable `https://*.public.blob.vercel-storage.com/...` URLs. Use when you want media on the same Vercel project without a Cloudinary account.
->
-> Reply with **1** or **2** (or "Cloudinary" / "Vercel Blob").
+> **2. Vercel Blob** — Vercel-native object storage; durable `https://*.public.blob.vercel-storage.com/...` URLs. Use when you want media on the same Vercel project without a Cloudinary account.
 
-If you catch yourself about to offer Blob-as-recommended, Supabase Storage, local disk, or "no media" ? **stop and paste the block above instead**.
+**Fallback only** (no choice UI): chat reply **1** / **2** / "Cloudinary" / "Vercel Blob".
+
+If you catch yourself about to offer Blob-as-recommended, Supabase Storage, local disk, or "no media" — **stop and use the block above instead**.
 
 ### Step B ??If **1 / Cloudinary** (same Question 2 ??**one Env popup**)
 
@@ -765,7 +900,7 @@ The SDK auto-detects these env vars.
 >
 > **Every field is optional** once the form is shown. After the user submits (including all-blank) or says "skip": keep starter **`brand.json`** for blanks; **do not** re-ask Q3 a second time. **Do not** invent a second branding prompt.
 >
-> Default TomorrowOS Control Panel has **no login**. Do **not** scaffold login/auth unless the user explicitly asks.
+> Without `CMS_PASSWORD`, the Control Panel has **no login**. Do **not** invent custom login/auth. Optional **Question 4** may set Env `CMS_PASSWORD` for Control Panel auth only (never Vercel Deployment Protection / whole-site password).
 
 ### Preferred UI (open immediately - all seven at once - then wait)
 
@@ -848,26 +983,71 @@ Set `cmsEndpoint` only if they already know the public `https://?vercel.app` URL
 
 ---
 
-## After all answers ? execution checklist
+## Question 4 — Optional CMS password (`CMS_PASSWORD`)
+
+> **Optional.** Protect the Control Panel with app-level auth. You may **skip** and set Env Var `CMS_PASSWORD` later (then Redeploy).
+
+> **IRON RULE — no prelude:** As soon as Q3 is submitted/skipped, open **this** step next. Do **not** first ask whether they want a password / auth / lock. Open the password Env/Secret field (or one chat prompt) immediately; blank/skip is a complete Q4 answer.
+
+**UX (required):** Open **one** Env/Secret input labeled **`CMS_PASSWORD`** (password field). User may enter a password **or** leave blank / skip.
+
+**Ask (Env input — preferred — or one chat reply):**
+
+> Optional CMS password — Environment Variable **`CMS_PASSWORD`**.
+>
+> Enter a password to lock the Control Panel, or leave blank / skip to keep the panel open. You can add `CMS_PASSWORD` later in Vercel → Settings → Environment Variables and redeploy.
+
+**Forbidden before / instead of this input:**
+- "Do you want to protect the CMS?"
+- "Add a password?" / "Enable auth?"
+- Option A/B or yes/no for password first
+
+**Why:**
+- Locks the **CMS Control Panel only** (not the whole deployment).
+- Devices still reach WebSocket / brand / uploads without that password.
+- Safer than Vercel **Deployment Protection** / whole-site password (those break Tizen/BrightSign).
+- Leaving it blank is fine; add `CMS_PASSWORD` later when you want the login page.
+
+**Accept:**
+- blank / skip / "later" / "no" → do **not** set `CMS_PASSWORD`
+- any non-empty password → set Vercel Env **`CMS_PASSWORD`** (Production + Preview as needed)
+
+**Reject / clarify:**
+- Do **not** enable Vercel Deployment Protection / whole-site password for device reachability.
+- Do **not** put the password in committed source.
+
+---
+
+## After all answers — execution checklist
+
+### A0. IRON GATE first (mandatory)
+
+Complete **IRON GATE — v0 Preview hygiene** before long Postgres/media debugging:
+
+1. Prove `GET /status` is TomorrowOS JSON (or clear root Next + restart supervised `dev` until it is).
+2. Remove root `app/` / `next.config.*` leftovers; keep `preview/` only for the proxy shell.
+3. Do not spawn a second manual server that lacks injected env / fights `:3000`.
+4. Only then treat Database/Media connector errors as real.
 
 ### A. Seed the project
 
 ```bash
-npx @tomorrowos/sdk@latest init .
+npx @tomorrowos/sdk@latest init . --hosting v0
 # If not empty and user confirms starter overwrite:
-# npx @tomorrowos/sdk@latest init . --force
+# npx @tomorrowos/sdk@latest init . --hosting v0 --force
 ```
 
-Then (**Scheme A ??mandatory for Publish**):
+Then (**Scheme A — mandatory for Publish**):
 
 1. Keep **`server.ts`** at **project root** with top-level `listen()` + `export default server`.
-2. If Preview needs Next: **move** `next.config.*`, `app/`, Next `tsconfig` / `postcss` / `next-env.d.ts` into **`preview/`** ??remove them from root so Production is not mistaken for Next/static.
-3. Write `vercel.json` per **Scheme A3** (`fluid`, `framework: null`, no-op `buildCommand` ??**no** `startCommand`).
-4. **Force Project Settings** per **Scheme A4** (Framework = Other, Output Directory empty, Start = `npm run start`, Fluid on). Patch dashboard via API if it still says Next.js.
+2. **Immediately** move leftover v0 Next from root into **`preview/`** or delete root Next files (`next.config.*`, `app/`, Next `tsconfig` / `postcss` / `next-env.d.ts`, starter `components/`). Production must not see root Next.
+3. Write `vercel.json` per **Scheme A3** (`fluid`, `framework: null`, `"buildCommand": ""` — **no** `startCommand`, **no** no-op `npm run build`).
+4. **Force Project Settings** per **Scheme A4** (Framework = Other, Output Directory **empty/unset**, Build Command **empty**, Start = `npm run start`, Fluid on). Patch dashboard via API if it still says Next.js, Output = `public`, **or** Build = `npm run build`.
+4a. **Pre-Publish build/output check:** If build fails with `Output Directory "public" is empty` / not found: clear Output Directory **and** set Build Command / `buildCommand` to **`""`**. Do **not** add `public/robots.txt`. Do **not** keep a no-op build command.
 5. Do **not** add root `api/` catch-all for raw `http.Server`.
 6. Do **not** add `.replit*`.
 7. If Q2 = Vercel Blob: set `BLOB_READ_WRITE_TOKEN` + `TOMORROWOS_MEDIA=vercel-blob` (SDK-native; no custom bridge).
-
+8. **Restart** the platform-supervised Preview `dev` after script/layout changes (stale `next-server` is the #1 false “DB failure”).
 ### B. Environment Variables (Vercel dashboard + local)
 
 | Name | Required | Who fills it |
@@ -881,15 +1061,18 @@ Then (**Scheme A ??mandatory for Publish**):
 | `TOMORROWOS_MEDIA` | If Q2 = Vercel Blob | **Agent auto-sets** `vercel-blob` |
 | `TOMORROWOS_INTERNAL_PORT` | Preview only | Agent (e.g. `3001`) |
 | `PORT` | Optional | Vercel injects for Production |
+| `CMS_PASSWORD` | Optional (Q4) | User if set; blank/skip = omit (can add later) |
 
-Mirror non-secrets in `.env` for local `npm run dev` if helpful; never commit secrets.
+Mirror non-secrets in `.env` for local `npm run start` if helpful; never commit secrets.  
+On v0 Preview, secrets may exist only in **`.env.development.local`** / supervised env — see **Env loading trap**. Do not “fix Neon” until the process that serves `/status` actually has `DATABASE_URL` / `SUPABASE_URL`.
 
 ### C. Install and run
 
 ```bash
 npm install
 npm run start
-# Preview / v0: npm run dev:preview  (Next + TomorrowOS internal)
+# Preview / v0 when Next-hardwired: npm run dev:preview  (Next :3000 + TomorrowOS :3001)
+# After changing package.json "dev": restart the supervised process — do not leave stale next-server on :3000
 ```
 
 Confirm logs: `[TomorrowOS] listening on http://0.0.0.0:?`  
@@ -907,15 +1090,16 @@ vercel --prod
 
 **Publish acceptance checklist (all must pass ??Scheme A5):**
 
-1. Framework Preset = **Other** / null (dashboard confirms ??not Next.js)
+1. Framework Preset = **Other** / null (dashboard confirms — not Next.js)
 2. Output Directory = **empty** (not `public`)
+2a. Build Command = **empty** (`"buildCommand": ""` — not `npm run build`)
 3. Start Command = Node `TomorrowOS.listen` (`npm run start` / `tsx server.ts`)
 4. Fluid compute on
 5. Env Vars present for Production
-6. Production `GET /status` returns **JSON** ??**not** HTML (`Unexpected token 'T'` means this failed)
-7. Production `GET /` returns Control Panel HTML ??**not** `404: NOT_FOUND`
+6. Production `GET /status` returns **JSON** — **not** HTML (`Unexpected token 'T'` means this failed)
+7. Production `GET /` returns Control Panel HTML — **not** `404: NOT_FOUND`
 
-If step 6 fails but step 7 passes: **static `public/` trap** ??Vercel is not running Node. Re-apply Scheme A3?A4; try **Path B** (Git / `vercel --prod`); do **not** invent `api/` + `rewrites`.
+If step 6 fails but step 7 passes: **static `public/` trap** — Vercel is not running Node. Re-apply Scheme A3–A4; try **Path B** (Git / `vercel --prod`); do **not** invent `api/` + `rewrites`.
 
 Tell the user:
 
@@ -967,6 +1151,15 @@ More detail: https://docs.tomorrowos.org/docs/os/tizen and https://docs.tomorrow
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
+| Build: `Output Directory "public" is empty` / public not found | (1) Output Directory = `public`, **or** (2) Output null but **Build Command defined** → static-build mode | Clear Output; set `"buildCommand": ""` + dashboard Build empty; Fluid `api/index.ts`. Do **not** primary-fix with `public/robots.txt` or keep no-op `npm run build` |
+| Agent asked Q2 as chat “type 1 or 2” while choice UI available | Off-protocol Q2 UX | Re-ask Q2 with **clickable** Cloudinary / Vercel Blob options (same pattern as Q1) |
+| Agent asked yes/no “want a CMS password?” before Q4 | Off-protocol Q4 UX | After Q3, open **CMS_PASSWORD** Env input immediately (blank/skip OK) |
+| Preview 500 / Turbopack / `ENOENT .../app` after Q1–Q3 | Leftover **root** Next from v0 starter; not Neon/Blob | **IRON GATE:** delete/move root `app/` + `next.config.*`; keep `preview/`; restart supervised `dev`; prove `/status` JSON |
+| `Internal Server Error` + logs blame missing `DATABASE_URL` in a **manual** Bash server | `dotenv` loaded `.env` only; secret is in `.env.development.local` / supervised env | Restart **supervised** Preview process; or load both env files — do **not** immediately change Neon URL |
+| `EADDRINUSE :3000` while debugging | Second `pnpm dev` / stale `next-server` after script rewrite | Kill stale Next/tsx; one process; let supervisor re-exec new `"dev"` |
+| Preview still Next after `package.json` `"dev"` → `tsx` | Supervised process never restarted | Kill old tree; wait for supervisor / restart Preview |
+| Agent spent many turns on Postgres before `/status` JSON | Skipped IRON GATE | Stop; run hygiene steps 1–5; only then debug store |
+| Q1=Neon / Q2=Blob then long Preview outage | Usually **not** the product choice | Same as root-Next / env-injection failures; choices are valid |
 | Publish `404: NOT_FOUND` | Framework Preset still **Next.js** / no Function | Scheme A: Framework = **Other**, Fluid on, `api/index.ts` + rewrites; redeploy |
 | Panel loads but **CMS unreachable** / `Unexpected token 'T', "The page c"...` | **`public/` deployed as static site** ??no Function | Rename to `cms-panel/`; Output empty; Scheme A Function entry; **Path B** if needed |
 | Only `/api/status` returns JSON, `/status` is 404 | Missing **rewrites** to `/api` | Add Scheme A3 rewrite `/(.*) ??/api` (exclude existing `/api/`); redeploy |
@@ -974,7 +1167,7 @@ More detail: https://docs.tomorrowos.org/docs/os/tizen and https://docs.tomorrow
 | `vercel.json` error: invalid `startCommand` | v0 schema rejects it | Remove from `vercel.json`; Function entry does not need startCommand |
 | Separate `api/ws.ts` with a second `new TomorrowOS` | Two isolates ??pairing memory split | **One** Function only (`api/index.ts` ??shared `cms-app.ts`) |
 | `vercel inspect` shows Output = `public if it exists` | Framework=Other static default | Force Output Directory **empty**; use `cms-panel/`; Path B redeploy |
-| Build runs `next build` / missing routes-manifest | Next auto-detected from root `next.config` / `app/` | Move Next to `preview/`; Framework null/Other; `build` = no-op |
+| Build runs `next build` / missing routes-manifest | Next auto-detected from root `next.config` / `app/` | Move Next to `preview/`; Framework null/Other; `"buildCommand": ""` |
 | Preview blank but logs show TomorrowOS listening | v0 Next intercepts public port | Add Next reverse proxy ??internal TomorrowOS port |
 | Preview works, Publish broken / Next-only | Production still on Next | Switch Production to Fluid Function `api/index.ts` |
 | `ENETUNREACH` / IPv6 / `:5432` | Direct Postgres URL | Use **pooled** URL (Supabase `:6543` or Neon pooler) |
@@ -991,6 +1184,7 @@ More detail: https://docs.tomorrowos.org/docs/os/tizen and https://docs.tomorrow
 | Agent showed only Name + Primary colour (or any subset) | Off-protocol Q3 | Rebuild with **all seven** inputs visible at once |
 | Agent auto-continued after showing Q3 because "fields are optional" / "shouldn't re-ask" | Off-protocol Q3 | **HARD STOP** and wait for submit or explicit "skip"; do not scaffold yet |
 | Agent asked branding as Option A URL vs Option B, or field-by-field Next | Off-protocol Q3 | Re-open Q3 as **seven separate optional inputs** in one dialog; blanks keep `brand.json` |
+| Agent enabled Vercel Deployment Protection / whole-site password | Blocks Tizen/BrightSign | Disable host gate; use optional `CMS_PASSWORD` for Control Panel only |
 | Agent built a login page from branding answers | Misread brand step as product scope | Remove login; keep starter Control Panel; apply answers only to `brand.json` |
 | Secrets in git | Mistake | Rotate keys; move to Vercel Env Vars |
 | Replit files present | Copied wrong protocol | Delete `.replit*`; use this file |
@@ -1023,15 +1217,16 @@ After setup, report:
 5. **Store:** Supabase pooler or Neon pooled
 6. **Media:** Cloudinary or Vercel Blob
 7. **Brand:** name + `hostingTarget: vercel` (from optional Q3 fields; blanks = starter defaults)
-8. **Runtime split:** Preview = …; Publish = Node TomorrowOS (confirm **not** Next)
-9. **Open action:** if Database still ERROR, paste the pooler instruction again
-10. **Connect a screen:** include the Tizen Custom App URL / BrightSign SD install + six-character pairing steps from section **D. Deploy** above (required — do not skip)
+8. **CMS password:** set or skipped (yes/no only — never echo the password)
+9. **Runtime split:** Preview = …; Publish = Node TomorrowOS (confirm **not** Next)
+10. **Open action:** if Database still ERROR, paste the pooler instruction again
+11. **Connect a screen:** include the Tizen Custom App URL / BrightSign SD install + six-character pairing steps from section **D. Deploy** above (required — do not skip)
 
 Protocol complete when:
 
 - **Preview** shows the Control Panel at `/` (via Next proxy if required), **and**
 - **Publish** returns Control Panel at `/` **and** `/status` JSON from pure Node `TomorrowOS.listen` with Fluid (not static `public/`, not `404: NOT_FOUND`, not `Unexpected token 'T'`), **and**
-- Q1–Q3 configuration is saved, **and**
+- Q1–Q4 configuration is saved, **and**
 - the user has been told how to install Tizen and/or BrightSign and pair
 
 ? even if a sandbox DB probe still flakes **after** the pooled URL is correctly set for Production.
@@ -1040,7 +1235,15 @@ Protocol complete when:
 
 ## Protocol version
 
-`vercel-setup/1.15` - pairs with `@tomorrowos/sdk` 0.9.70+ and `VERCEL_QUESTIONS.md` 1.5.
+`vercel-setup/1.19` - pairs with `@tomorrowos/sdk` 0.9.70+ and `VERCEL_QUESTIONS.md` 1.8.
+
+**Changelog 1.19:** Publish Build Command must be **empty** (`"buildCommand": ""`) — a defined no-op `npm run build` forces Vercel static-build mode and the `public/` output check (empty → “not found” after deleting `public/`). Q4 opens **immediately after Q3** as the `CMS_PASSWORD` Env input with **no** yes/no password prelude.
+
+**Changelog 1.18:** Q1/Q2 must use **clickable choice UI** (not chat “type 1 or 2” when UI exists). Publish build error `Output Directory "public" is empty` → **clear Output Directory** (forbidden primary fix: stuff `public/robots.txt` while Output stays `public`). Strengthens static-output trap docs.
+
+**Changelog 1.17:** After Q&A, agents **must** run **IRON GATE — v0 Preview hygiene** before DB rabbit holes: clear root Next leftovers, restart supervised `dev`, prove `GET /status` is TomorrowOS JSON. Documents `.env` vs `.env.development.local` / supervised-env trap. Preview decision tree + cheat-sheet rows for Turbopack/`ENOENT`, missing `DATABASE_URL` in manual Bash, `EADDRINUSE`, stale `next-server`. Neon/Blob choices are not the usual Preview failure cause.
+
+**Changelog 1.16:** Question 4 is optional Control Panel Env `CMS_PASSWORD` (blank/skip allowed; can set later). Do not use Vercel Deployment Protection / whole-site password for devices.
 
 **Changelog 1.15:** After Publish is healthy, agents **must** tell the user how to install Tizen (Custom App `https://tmr.sh/tizen`) and BrightSign (CMS zip → SD root) and pair against the **Production** URL. Final summary requires this screen-connect step.
 

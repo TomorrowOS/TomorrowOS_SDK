@@ -1068,7 +1068,7 @@ button.danger {
 
 .player-platform-grid {
   display: grid;
-  padding:1.5rem;
+  padding: 1.5rem 1.5rem 0.5rem;
  
   grid-template-columns: 1fr 1fr;
   gap: 1.75rem 2rem;
@@ -1080,7 +1080,7 @@ button.danger {
   flex-direction: column;
   align-items: center;
   gap: 0.45rem;
-  min-height: 5.5rem;
+  min-height: 4.25rem;
 }
 
 .player-platform-link {
@@ -1124,8 +1124,8 @@ button.danger {
 }
 
 .player-platform-diy {
-  margin-top: 1.35rem;
-  padding-top: 1.35rem;
+  margin-top: 0.55rem;
+  padding-top: 1.15rem;
   border-top: 1px solid #e4e1dc;
   display: flex;
   flex-direction: column;
