@@ -106,9 +106,9 @@ Player install and pairing: `PLAYER_INSTALL.md`. Deep hosting and agent protocol
 | Samsung Tizen 6.5 and 7.0 | Supported | Certified models and firmware only |
 | BrightSign Series 3-6 | Supported | Series 3 requires firmware **9.1.140+** |
 | BrightSign Series 3 4K H.264 | Not supported | Use certified **1080p H.264** media |
+| Windows 11 Pro x64 | Supported | None |
 | Android | Planned | Not available for production |
 | LG webOS | Planned | Not available for production |
-| Windows | Planned | Not available for production |
 
 Treat a combination as production-ready only after you validate it on your panels.
 

@@ -1,6 +1,6 @@
 {
   "name": "@tomorrowos/sdk",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "description": "Server SDK for building and self-hosting digital signage CMS products with TomorrowOS players.",
   "type": "module",
   "main": "./dist/index.js",

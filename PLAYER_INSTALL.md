@@ -18,7 +18,7 @@ This guide covers the full path from a verified player package to a paired scree
 
 - A running TomorrowOS CMS (Replit, Vercel, Railway, or self-hosted)
 - A CMS URL the **panel** can reach (public HTTPS in production, or a tunnel / LAN IP for lab tests)
-- A supported panel: **Samsung Tizen 6.5 and 7.0** or **BrightSign Series 3-6**
+- A supported panel: **Samsung Tizen 6.5 and 7.0**, **BrightSign Series 3-6**, or **Windows 11 Pro x64** (Windows Player V1)
 
 ---
 
@@ -28,6 +28,7 @@ This guide covers the full path from a verified player package to a paired scree
 | --- | --- |
 | **Samsung** | Install on a Samsung Tizen player via **Custom App** (`https://tmr.sh/tizen`), or download the player from the CMS and install it via USB. |
 | **BrightSign** | Download the ZIP package from the CMS with `config.js` configured so that `cmsEndpoint` points to your CMS origin and install it via SD card. |
+| **Windows** | Download **Windows Player V1** (`TomorrowOS-Windows-Setup.exe`) and run the installer on **Windows 11 Pro x64**. |
 
 ### Samsung (recommended path)
 
@@ -54,7 +55,21 @@ After install, enter your CMS URL on the on-device setup screen.
 1. Control Panel → **Download Players → BrightSign** (`GET /players/brightsign.zip`).
 2. That zip already has `cmsEndpoint` pointed at **this** CMS origin — usually you only confirm `orientation`.
 
-Caption in the Control Panel today: **Tizen 6.5 and 7.0**, **BrightSign Series 3-6**. 
+### Windows
+
+**Windows 11 Pro x64** — Windows Player V1. Download the installer from either:
+
+- `https://tmr.sh/app/windows/TomorrowOS-Windows-Setup.exe`, **or**
+- Control Panel → **Download Players → Windows**
+
+Then install:
+
+1. Run `TomorrowOS-Windows-Setup.exe`.
+2. In the wizard, set the CMS endpoint, orientation, display, and maintenance passcode.
+3. Finish the wizard and launch the player.
+4. The screen shows a six-character pairing code. Enter it in the Control Panel to pair.
+
+Caption in the Control Panel today: **Tizen 6.5 and 7.0**, **BrightSign Series 3-6**, **Windows 11 Pro x64**. 
 
 ---
 
@@ -144,6 +159,18 @@ When you download via the CMS, `cmsEndpoint` is **filled automatically** with th
 9. Wait through the initial black window (~10 seconds before `Show()` is normal).
 10. Confirm the pairing / brand UI appears.
 
+### Windows
+
+**Windows 11 Pro x64** — Windows Player V1.
+
+1. Download the installer from either:
+   - `https://tmr.sh/app/windows/TomorrowOS-Windows-Setup.exe`, **or**
+   - Control Panel → **Download Players → Windows**
+2. Run `TomorrowOS-Windows-Setup.exe`.
+3. In the wizard, set the CMS endpoint, orientation, display, and maintenance passcode.
+4. Finish the wizard and launch the player.
+5. The screen shows a six-character pairing code. Enter it in the Control Panel to pair.
+
 ---
 
 ## 4. Six-character pairing
@@ -191,7 +218,7 @@ Always record **model + firmware** from `device.info.get` before calling a fleet
 
 ### Not shipping yet
 
-LG webOS, Android, and Windows players are not in this SDK release.
+LG webOS and Android players are not in this SDK release.
 
 ---
 
@@ -225,6 +252,7 @@ await tomorrowos.pairing.unpair(deviceId);
 2. Point the player at the **new** CMS endpoint:
    - Tizen: re-enter CMS URL on the setup screen (clear / change stored URL if needed, then reboot).
    - BrightSign: download a new zip from the **new** CMS (or edit `config.js` `cmsEndpoint`), copy to SD, power-cycle.
+   - Windows: re-run `TomorrowOS-Windows-Setup.exe` and set the new CMS endpoint, then launch the player.
 3. Pair on the new CMS with the on-screen code.
 
 ---
@@ -245,7 +273,7 @@ await tomorrowos.pairing.unpair(deviceId);
 
 ## Coming soon
 
-LG webOS, Android, and Windows apps.
+LG webOS and Android players.
 
 ---
 
