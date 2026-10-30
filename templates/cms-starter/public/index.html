@@ -58,6 +58,16 @@
 
         <section class="card" id="pairedDevicesSection">
           <h2>Paired devices</h2>
+          <p class="hint">
+            Screen tags choose which playlist items this screen plays. Adding or removing a tag updates the screen on its own — publish the playlist again only when you first assign it.
+          </p>
+          <div class="screen-tag-toolbar">
+            <label class="field-label">
+              Show screens with tag
+              <input id="screenTagFilter" type="text" placeholder="screen-a" autocomplete="off" />
+            </label>
+            <button type="button" id="manageTagsBtn">Manage tags</button>
+          </div>
           <div id="devicesGrid" class="devices-grid">
             <p class="devices-empty" id="devicesEmpty">No paired devices yet.</p>
           </div>
@@ -129,7 +139,9 @@
           <h2>Assets</h2>
           <button type="button" class="primary" id="addAssetBtn" title="Add image or video">+</button>
         </div>
-        <p class="hint playlist-assets-hint">Drag ⋮⋮ to reorder assets. Save playlist to keep the new order.</p>
+        <p class="hint playlist-assets-hint">
+          Drag ⋮⋮ to reorder. Add rule chooses which screens and which times play that asset. No tags means every screen. No schedule means all the time. Save the playlist to apply.
+        </p>
         <input
           type="file"
           id="fileInput"
@@ -148,6 +160,79 @@
           <li class="playlist-empty" id="playlistEmpty">Select or create a playlist, then add assets.</li>
         </ul>
       </aside>
+    </div>
+
+    <div id="manageTagsModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="manageTagsTitle">
+      <div class="modal-backdrop" data-close-manage-tags="1"></div>
+      <div class="modal-card tag-rule-modal-card">
+        <div class="tag-rule-modal-body">
+        <div class="tag-rule-modal-header">
+          <h2 id="manageTagsTitle">Tags</h2>
+          <button type="button" class="tag-rule-close" data-close-manage-tags="1" aria-label="Close">×</button>
+        </div>
+        <p class="hint">A tag that is still selected on a screen or an asset cannot be deleted.</p>
+        <ul id="manageTagList" class="manage-tag-list"></ul>
+        <div class="manage-tag-create">
+          <input id="manageTagInput" type="text" placeholder="New tag" autocomplete="off" />
+          <button type="button" id="manageTagAddBtn" class="primary">Add tag</button>
+        </div>
+        <p id="manageTagError" class="manage-tag-error"></p>
+        </div>
+      </div>
+    </div>
+
+    <div id="tagRuleModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="tagRuleTitle">
+      <div class="modal-backdrop" data-close-tag-rule-modal="1"></div>
+      <div class="modal-card tag-rule-modal-card">
+        <div class="tag-rule-modal-body">
+        <div class="tag-rule-modal-header">
+          <h2 id="tagRuleTitle">Where and when it plays</h2>
+          <button type="button" class="tag-rule-close" data-close-tag-rule-modal="1" aria-label="Close">×</button>
+        </div>
+        <p class="tag-rule-asset-name" id="tagRuleAssetName"></p>
+        <h3 class="tag-rule-section">Screens</h3>
+        <p class="hint">No tags means it plays on every screen of the playlist.</p>
+        <p class="tag-rule-sentence">
+          <span>Play on screens with</span>
+          <select id="tagRuleMatch" aria-label="Tag match">
+            <option value="any">any of</option>
+            <option value="all">all of</option>
+            <option value="notAll">not all of</option>
+            <option value="notAny">none of</option>
+          </select>
+          <span>these tags</span>
+        </p>
+        <div id="tagRuleSelected" class="tag-rule-selected"></div>
+        <div class="tag-rule-add">
+          <input id="tagRuleAddInput" type="text" placeholder="Add a tag" autocomplete="off" />
+          <ul id="tagRuleOptions" class="tag-rule-options hidden" role="listbox"></ul>
+        </div>
+        <hr class="tag-rule-divider" />
+        <h3 class="tag-rule-section item-schedule-heading">Schedule</h3>
+        <p class="hint">Leave a field blank for no limit. If the end time is earlier than the start time, playback continues past midnight.</p>
+        <div class="item-schedule-grid">
+          <label>From date<input type="date" id="itemScheduleStartDate" /></label>
+          <label>Until date<input type="date" id="itemScheduleEndDate" /></label>
+          <label>From time<input type="time" id="itemScheduleStartTime" /></label>
+          <label>Until time<input type="time" id="itemScheduleEndTime" /></label>
+        </div>
+        <p class="item-schedule-repeats">Repeats on</p>
+        <div class="item-schedule-days" role="group" aria-label="Days, Monday through Sunday">
+          <button type="button" class="item-schedule-day is-on" data-item-schedule-day="0" aria-pressed="true">Mon</button>
+          <button type="button" class="item-schedule-day is-on" data-item-schedule-day="1" aria-pressed="true">Tue</button>
+          <button type="button" class="item-schedule-day is-on" data-item-schedule-day="2" aria-pressed="true">Wed</button>
+          <button type="button" class="item-schedule-day is-on" data-item-schedule-day="3" aria-pressed="true">Thu</button>
+          <button type="button" class="item-schedule-day is-on" data-item-schedule-day="4" aria-pressed="true">Fri</button>
+          <button type="button" class="item-schedule-day is-on" data-item-schedule-day="5" aria-pressed="true">Sat</button>
+          <button type="button" class="item-schedule-day is-on" data-item-schedule-day="6" aria-pressed="true">Sun</button>
+        </div>
+        <p id="itemScheduleError" class="manage-tag-error"></p>
+        <div class="modal-actions tag-rule-modal-actions">
+          <button type="button" id="tagRuleCancelBtn">Cancel</button>
+          <button type="button" id="tagRuleApplyBtn" class="primary">Apply</button>
+        </div>
+        </div>
+      </div>
     </div>
 
     <div id="publishModal" class="modal hidden" role="dialog" aria-modal="true">

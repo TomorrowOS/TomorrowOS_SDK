@@ -12,8 +12,35 @@ let selectedPlaylistId = null;
 /** True while creating a new playlist locally (assets allowed before Save). */
 let playlistDraftActive = false;
 
-/** @type {{ id: string, assetId?: string, url: string, name: string, type: string, durationMs: number }[]} */
+/** @type {{ id: string, assetId?: string, url: string, name: string, type: string, durationMs: number, tagRule: { match: string, tags: string[] } | null, schedule: { startDate?: string, endDate?: string, startTime?: string, endTime?: string, days?: boolean[] } | null }[]} */
 let editorItems = [];
+
+/** @type {Record<string, string[]>} */
+let screenTagsByDevice = {};
+
+/** Draft text for the per-device tag field, kept across the device list refresh. */
+const tagDraftByDevice = {};
+/** @type {string|null} */
+let tagInputFocusDeviceId = null;
+let renderingDeviceCards = false;
+
+const TAG_RULE_OPS = [
+  { value: "any", label: "any of" },
+  { value: "all", label: "all of" },
+  { value: "notAll", label: "not all of" },
+  { value: "notAny", label: "none of" }
+];
+
+const ITEM_SCHEDULE_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/** @type {string[]} */
+let tagCatalog = [];
+/** Tags created in this page session before the catalog refresh returns. */
+const createdScreenTags = new Set();
+/** @type {string|null} */
+let tagRuleModalItemId = null;
+/** @type {{ tagRule: { match: string, tags: string[] } | null, schedule: { startDate?: string, endDate?: string, startTime?: string, endTime?: string, days?: boolean[] } | null } | null} */
+let tagRuleModalSnapshot = null;
 
 /** Item id currently being dragged in the asset list (reorder). */
 let draggingEditorItemId = null;
@@ -783,6 +810,329 @@ function updatePlaylistEditorVisibility() {
   section.classList.toggle("hidden", !isPlaylistEditorOpen());
 }
 
+function normalizeEditorTag(raw) {
+  const tag = String(raw || "").trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(tag)) return "";
+  return tag;
+}
+
+function parseEditorTagList(text) {
+  const tags = [];
+  const seen = new Set();
+  for (const part of String(text || "").split(",")) {
+    const tag = normalizeEditorTag(part);
+    if (!tag || seen.has(tag)) continue;
+    seen.add(tag);
+    tags.push(tag);
+  }
+  return tags;
+}
+
+function editorTagRuleFromItem(item) {
+  const rule = item?.tagRule;
+  if (!rule || typeof rule !== "object") return null;
+  const matchValue = rule.match || rule.op;
+  const match = TAG_RULE_OPS.some((option) => option.value === matchValue) ? matchValue : "";
+  const tags = Array.isArray(rule.tags) ? parseEditorTagList(rule.tags.join(",")) : [];
+  if (!match || tags.length === 0) return null;
+  return { match, tags };
+}
+
+function knownScreenTags() {
+  const tags = [];
+  const seen = new Set();
+  const add = (raw) => {
+    const tag = normalizeEditorTag(raw);
+    if (!tag || seen.has(tag)) return;
+    seen.add(tag);
+    tags.push(tag);
+  };
+  for (const list of Object.values(screenTagsByDevice)) {
+    for (const tag of list || []) add(tag);
+  }
+  for (const playlist of playlistsCatalog) {
+    for (const entry of playlist.items || []) {
+      for (const tag of entry.tagRule?.tags || []) add(tag);
+    }
+  }
+  for (const entry of editorItems) {
+    for (const tag of entry.tagRule?.tags || []) add(tag);
+  }
+  for (const tag of tagCatalog) add(tag);
+  for (const tag of createdScreenTags) add(tag);
+  tags.sort();
+  return tags;
+}
+
+async function registerCatalogTag(tag) {
+  const res = await fetch("/tags", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tag })
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    alert(data.error || "Could not create tag");
+    return false;
+  }
+  if (Array.isArray(data.tags)) tagCatalog = data.tags;
+  createdScreenTags.add(tag);
+  return true;
+}
+
+function normalizeClockValue(value) {
+  const match = /^(\d{2}):(\d{2})/.exec(String(value || "").trim());
+  if (!match) return "";
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour > 23 || minute > 59) return "";
+  return `${match[1]}:${match[2]}`;
+}
+
+function editorScheduleFromItem(item) {
+  const schedule = item?.schedule;
+  if (!schedule || typeof schedule !== "object") return null;
+  const next = {};
+  if (/^\d{4}-\d{2}-\d{2}$/.test(schedule.startDate || "")) next.startDate = schedule.startDate;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(schedule.endDate || "")) next.endDate = schedule.endDate;
+  const startTime = normalizeClockValue(schedule.startTime);
+  const endTime = normalizeClockValue(schedule.endTime);
+  if (startTime) next.startTime = startTime;
+  if (endTime) next.endTime = endTime;
+  if (
+    Array.isArray(schedule.days) &&
+    schedule.days.length === 7 &&
+    schedule.days.every((day) => typeof day === "boolean") &&
+    schedule.days.some((day) => !day)
+  ) {
+    next.days = schedule.days.slice();
+  }
+  return Object.keys(next).length ? next : null;
+}
+
+function formatEditorSchedule(schedule) {
+  if (!schedule) return "";
+  const parts = [];
+  if (schedule.startDate || schedule.endDate) {
+    parts.push(`${schedule.startDate || "any date"}–${schedule.endDate || "any date"}`);
+  }
+  if (schedule.startTime || schedule.endTime) {
+    parts.push(`${schedule.startTime || "00:00"}–${schedule.endTime || "24:00"}`);
+  }
+  if (Array.isArray(schedule.days)) {
+    const labels = ITEM_SCHEDULE_DAYS.filter((_, index) => schedule.days[index]);
+    parts.push(labels.length ? labels.join(" ") : "no days");
+  }
+  return parts.join(" · ");
+}
+
+function readItemScheduleFromForm() {
+  const startDate = document.getElementById("itemScheduleStartDate")?.value || "";
+  const endDate = document.getElementById("itemScheduleEndDate")?.value || "";
+  const startTime = normalizeClockValue(document.getElementById("itemScheduleStartTime")?.value);
+  const endTime = normalizeClockValue(document.getElementById("itemScheduleEndTime")?.value);
+  const days = [...document.querySelectorAll("[data-item-schedule-day]")].map(
+    (button) => button.getAttribute("aria-pressed") === "true"
+  );
+  const schedule = {};
+  if (startDate) schedule.startDate = startDate;
+  if (endDate) schedule.endDate = endDate;
+  if (startTime) schedule.startTime = startTime;
+  if (endTime) schedule.endTime = endTime;
+  if (days.length === 7 && days.some((day) => !day)) schedule.days = days;
+  return Object.keys(schedule).length ? schedule : null;
+}
+
+function loadItemScheduleIntoForm(schedule) {
+  const startDate = document.getElementById("itemScheduleStartDate");
+  const endDate = document.getElementById("itemScheduleEndDate");
+  const startTime = document.getElementById("itemScheduleStartTime");
+  const endTime = document.getElementById("itemScheduleEndTime");
+  if (startDate) startDate.value = schedule?.startDate || "";
+  if (endDate) endDate.value = schedule?.endDate || "";
+  if (startTime) startTime.value = schedule?.startTime || "";
+  if (endTime) endTime.value = schedule?.endTime || "";
+  const days = Array.isArray(schedule?.days) && schedule.days.length === 7
+    ? schedule.days
+    : [true, true, true, true, true, true, true];
+  document.querySelectorAll("[data-item-schedule-day]").forEach((button, index) => {
+    const on = days[index] !== false;
+    button.setAttribute("aria-pressed", on ? "true" : "false");
+    button.classList.toggle("is-on", on);
+  });
+  const error = document.getElementById("itemScheduleError");
+  if (error) error.textContent = "";
+}
+
+function applyItemScheduleFromForm() {
+  const item = tagRuleModalItem();
+  if (!item) return;
+  item.schedule = readItemScheduleFromForm();
+  const error = document.getElementById("itemScheduleError");
+  if (!error) return;
+  const schedule = item.schedule;
+  error.textContent = schedule?.startDate && schedule?.endDate && schedule.startDate > schedule.endDate
+    ? "The until date is before the from date."
+    : "";
+}
+
+function tagRuleModalItem() {
+  return editorItems.find((entry) => entry.id === tagRuleModalItemId) || null;
+}
+
+function snapshotTagRuleState(item) {
+  const schedule = editorScheduleFromItem(item);
+  return {
+    tagRule: item.tagRule?.tags?.length
+      ? { match: item.tagRule.match, tags: item.tagRule.tags.slice() }
+      : null,
+    schedule: schedule
+      ? { ...schedule, ...(Array.isArray(schedule.days) ? { days: schedule.days.slice() } : {}) }
+      : null
+  };
+}
+
+function openTagRuleModal(item) {
+  tagRuleModalItemId = item.id;
+  tagRuleModalSnapshot = snapshotTagRuleState(item);
+  const modal = document.getElementById("tagRuleModal");
+  const name = document.getElementById("tagRuleAssetName");
+  const match = document.getElementById("tagRuleMatch");
+  const input = document.getElementById("tagRuleAddInput");
+  if (!modal || !name || !match || !input) return;
+  name.textContent = item.name || "asset";
+  match.value = TAG_RULE_OPS.some((option) => option.value === item.tagRule?.match)
+    ? item.tagRule.match
+    : "any";
+  input.value = "";
+  renderTagRuleSelection();
+  hideTagRuleOptions();
+  loadItemScheduleIntoForm(item.schedule);
+  modal.classList.remove("hidden");
+}
+
+function closeTagRuleModal() {
+  document.getElementById("tagRuleModal")?.classList.add("hidden");
+  hideTagRuleOptions();
+  tagRuleModalItemId = null;
+  tagRuleModalSnapshot = null;
+  renderEditorAssets();
+}
+
+function cancelTagRuleModal() {
+  const item = tagRuleModalItem();
+  if (item && tagRuleModalSnapshot) {
+    item.tagRule = tagRuleModalSnapshot.tagRule
+      ? { match: tagRuleModalSnapshot.tagRule.match, tags: tagRuleModalSnapshot.tagRule.tags.slice() }
+      : null;
+    const schedule = tagRuleModalSnapshot.schedule;
+    item.schedule = schedule
+      ? { ...schedule, ...(Array.isArray(schedule.days) ? { days: schedule.days.slice() } : {}) }
+      : null;
+  }
+  closeTagRuleModal();
+}
+
+function applyTagRuleModal() {
+  applyItemScheduleFromForm();
+  const error = document.getElementById("itemScheduleError");
+  if (error?.textContent) return;
+  const item = tagRuleModalItem();
+  const match = document.getElementById("tagRuleMatch");
+  if (item?.tagRule?.tags?.length && match) {
+    item.tagRule = { match: match.value, tags: item.tagRule.tags.slice() };
+  }
+  closeTagRuleModal();
+}
+
+function renderTagRuleSelection() {
+  const item = tagRuleModalItem();
+  const selected = document.getElementById("tagRuleSelected");
+  if (!item || !selected) return;
+  selected.innerHTML = "";
+  for (const tag of item.tagRule?.tags || []) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "device-tag-chip";
+    chip.textContent = `${tag} ×`;
+    chip.title = `Remove ${tag}`;
+    chip.addEventListener("click", () => removeTagFromOpenRule(tag));
+    selected.appendChild(chip);
+  }
+}
+
+function hideTagRuleOptions() {
+  document.getElementById("tagRuleOptions")?.classList.add("hidden");
+}
+
+function showTagRuleOptions() {
+  const item = tagRuleModalItem();
+  const input = document.getElementById("tagRuleAddInput");
+  const list = document.getElementById("tagRuleOptions");
+  if (!item || !input || !list) return;
+  const query = String(input.value || "").trim().toLowerCase();
+  const selected = new Set(item.tagRule?.tags || []);
+  const choices = knownScreenTags().filter((tag) => !selected.has(tag) && (!query || tag.includes(query)));
+  const typed = normalizeEditorTag(input.value);
+  list.innerHTML = "";
+
+  for (const tag of choices) {
+    const li = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = tag;
+    button.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      addTagToOpenRule(tag);
+    });
+    li.appendChild(button);
+    list.appendChild(li);
+  }
+
+  if (typed && !knownScreenTags().includes(typed) && !selected.has(typed)) {
+    const li = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = `Create “${typed}”`;
+    button.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      void (async () => {
+        if (!(await registerCatalogTag(typed))) return;
+        addTagToOpenRule(typed);
+      })();
+    });
+    li.appendChild(button);
+    list.appendChild(li);
+  }
+
+  list.classList.toggle("hidden", list.childElementCount === 0);
+}
+
+function addTagToOpenRule(tag) {
+  const item = tagRuleModalItem();
+  const match = document.getElementById("tagRuleMatch");
+  const input = document.getElementById("tagRuleAddInput");
+  if (!item || !match) return;
+  const normalized = normalizeEditorTag(tag);
+  if (!normalized) return;
+  const tags = [...(item.tagRule?.tags || [])];
+  if (!tags.includes(normalized)) tags.push(normalized);
+  item.tagRule = { match: match.value || "any", tags };
+  if (input) input.value = "";
+  renderTagRuleSelection();
+  showTagRuleOptions();
+}
+
+function removeTagFromOpenRule(tag) {
+  const item = tagRuleModalItem();
+  const match = document.getElementById("tagRuleMatch");
+  if (!item || !match) return;
+  const tags = (item.tagRule?.tags || []).filter((entry) => entry !== tag);
+  item.tagRule = tags.length ? { match: match.value || item.tagRule?.match || "any", tags } : null;
+  renderTagRuleSelection();
+  showTagRuleOptions();
+}
+
 function loadEditorFromSelection() {
   const pl = getSelectedPlaylist();
   const nameInput = document.getElementById("playlistName");
@@ -815,7 +1165,9 @@ function loadEditorFromSelection() {
     url: item.url,
     name: item.url?.split("/").pop() || "asset",
     type: item.type || "image",
-    durationMs: normalizeDurationMs(item)
+    durationMs: normalizeDurationMs(item),
+    tagRule: editorTagRuleFromItem(item),
+    schedule: editorScheduleFromItem(item)
   }));
   renderEditorAssets();
   updatePlaylistEditorVisibility();
@@ -972,11 +1324,31 @@ function renderEditorAssets() {
       renderEditorAssets();
     });
 
+    const ruleSummary = document.createElement("p");
+    ruleSummary.className = "playlist-item-rule-summary";
+    const summaryLines = [];
+    if (item.tagRule?.tags?.length) {
+      const label = TAG_RULE_OPS.find((option) => option.value === item.tagRule.match)?.label || item.tagRule.match;
+      summaryLines.push(`${label} ${item.tagRule.tags.join(", ")}`);
+    }
+    const when = formatEditorSchedule(item.schedule);
+    if (when) summaryLines.push(when);
+    if (summaryLines.length) ruleSummary.textContent = summaryLines.join("\n");
+    else ruleSummary.classList.add("hidden");
+
+    const addRuleBtn = document.createElement("button");
+    addRuleBtn.type = "button";
+    addRuleBtn.className = "playlist-item-btn playlist-item-add-rule";
+    addRuleBtn.textContent = "Add rule";
+    addRuleBtn.addEventListener("click", () => openTagRuleModal(item));
+
     actions.appendChild(durInput);
     actions.appendChild(downloadBtn);
     actions.appendChild(removeBtn);
     li.appendChild(name);
     li.appendChild(meta);
+    li.appendChild(ruleSummary);
+    li.appendChild(addRuleBtn);
     li.appendChild(actions);
     attachPlaylistItemDragDrop(li, item);
     list.appendChild(li);
@@ -996,12 +1368,19 @@ async function saveCurrentPlaylist() {
 
   let items;
   try {
-    items = editorItems.map((item) => ({
-      url: absoluteMediaUrl(item.url),
-      assetId: item.assetId,
-      type: item.type,
-      durationMs: item.durationMs
-    }));
+    items = editorItems.map((item) => {
+      const payload = {
+        url: absoluteMediaUrl(item.url),
+        assetId: item.assetId,
+        type: item.type,
+        durationMs: item.durationMs
+      };
+      if (item.tagRule?.match && item.tagRule.tags?.length) {
+        payload.tagRule = { match: item.tagRule.match, tags: item.tagRule.tags };
+      }
+      if (item.schedule) payload.schedule = item.schedule;
+      return payload;
+    });
   } catch (err) {
     alert(err.message);
     return;
@@ -1041,7 +1420,7 @@ async function deleteCurrentPlaylist() {
   const pl = getSelectedPlaylist();
   if (
     !confirm(
-      `Delete playlist "${pl?.name}"? Devices already playing it keep their cached copy until Clear or reboot without sync. New devices cannot receive it.`
+      `Delete playlist "${pl?.name}"? Devices already playing it keep their cached copy until Clear or reboot without sync. Clear removes it from the database once no screen still has it. New devices cannot receive it.`
     )
   ) {
     return;
@@ -1086,6 +1465,18 @@ function newPlaylistDraft() {
   });
 }
 
+async function fetchScreenTags() {
+  const [screenRes, catalogRes] = await Promise.all([fetch("/screen-tags"), fetch("/tags")]);
+  const screenData = await screenRes.json();
+  if (screenRes.ok && screenData.tagsByDevice && typeof screenData.tagsByDevice === "object") {
+    screenTagsByDevice = screenData.tagsByDevice;
+  }
+  if (catalogRes.ok) {
+    const catalogData = await catalogRes.json();
+    if (Array.isArray(catalogData.tags)) tagCatalog = catalogData.tags;
+  }
+}
+
 async function fetchDevices() {
   try {
     const res = await fetch("/devices");
@@ -1100,6 +1491,11 @@ async function fetchDevices() {
     }
     if (Array.isArray(data.devices)) {
       devicesCache = data.devices;
+      try {
+        await fetchScreenTags();
+      } catch {
+        // Tags are optional for the card list; the next poll retries.
+      }
       renderDeviceCards();
       scheduleReconnectGraceRerender();
     }
@@ -1207,20 +1603,249 @@ function createDeviceScreenshotThumb(device) {
   return slot;
 }
 
+function showDeviceTagOptions(deviceId) {
+  const input = document.querySelector(`[data-tag-input="${CSS.escape(deviceId)}"]`);
+  const list = document.querySelector(`[data-tag-options="${CSS.escape(deviceId)}"]`);
+  if (!(input instanceof HTMLInputElement) || !list) return;
+  const query = String(input.value || "").trim().toLowerCase();
+  const selected = new Set(screenTagsByDevice[deviceId] || []);
+  const choices = knownScreenTags().filter((tag) => !selected.has(tag) && (!query || tag.includes(query)));
+  const typed = normalizeEditorTag(input.value);
+  list.innerHTML = "";
+  for (const tag of choices) {
+    const li = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = tag;
+    button.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      tagDraftByDevice[deviceId] = tag;
+      void addDeviceTag(deviceId);
+    });
+    li.appendChild(button);
+    list.appendChild(li);
+  }
+  if (typed && !knownScreenTags().includes(typed) && !selected.has(typed)) {
+    const li = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = `Create “${typed}”`;
+    button.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      tagDraftByDevice[deviceId] = typed;
+      void addDeviceTag(deviceId);
+    });
+    li.appendChild(button);
+    list.appendChild(li);
+  }
+  list.classList.toggle("hidden", list.childElementCount === 0);
+}
+
+let manageTagEditing = "";
+
+async function openManageTagsModal() {
+  manageTagEditing = "";
+  await fetchScreenTags();
+  renderManageTags();
+  const error = document.getElementById("manageTagError");
+  if (error) error.textContent = "";
+  document.getElementById("manageTagsModal")?.classList.remove("hidden");
+  document.getElementById("manageTagInput")?.focus();
+}
+
+function closeManageTagsModal() {
+  manageTagEditing = "";
+  document.getElementById("manageTagsModal")?.classList.add("hidden");
+}
+
+function renderManageTags() {
+  const list = document.getElementById("manageTagList");
+  if (!list) return;
+  list.innerHTML = "";
+  if (tagCatalog.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "manage-tag-empty";
+    empty.textContent = "No tags yet.";
+    list.appendChild(empty);
+    return;
+  }
+  for (const tag of tagCatalog) {
+    const li = document.createElement("li");
+    li.className = "manage-tag-row";
+    if (manageTagEditing === tag) {
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = tag;
+      input.className = "manage-tag-rename";
+      const save = document.createElement("button");
+      save.type = "button";
+      save.className = "primary";
+      save.textContent = "Save";
+      save.addEventListener("click", () => void renameManagedTag(tag, input.value));
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.textContent = "Cancel";
+      cancel.addEventListener("click", () => {
+        manageTagEditing = "";
+        renderManageTags();
+      });
+      li.appendChild(input);
+      li.appendChild(save);
+      li.appendChild(cancel);
+    } else {
+      const name = document.createElement("span");
+      name.textContent = tag;
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.textContent = "Edit";
+      edit.addEventListener("click", () => {
+        manageTagEditing = tag;
+        renderManageTags();
+      });
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "danger";
+      remove.textContent = "Delete";
+      remove.addEventListener("click", () => void deleteManagedTag(tag));
+      li.appendChild(name);
+      li.appendChild(edit);
+      li.appendChild(remove);
+    }
+    list.appendChild(li);
+  }
+}
+
+async function addManagedTag() {
+  const input = document.getElementById("manageTagInput");
+  const tag = normalizeEditorTag(input?.value || "");
+  const error = document.getElementById("manageTagError");
+  if (!tag) {
+    if (error) error.textContent = "Use letters, numbers, hyphens, or underscores.";
+    return;
+  }
+  if (tagCatalog.includes(tag)) {
+    if (error) error.textContent = `Tag “${tag}” already exists.`;
+    return;
+  }
+  if (!(await registerCatalogTag(tag))) return;
+  if (input) input.value = "";
+  if (error) error.textContent = "";
+  renderManageTags();
+  renderDeviceCards();
+}
+
+async function renameManagedTag(from, rawNext) {
+  const next = normalizeEditorTag(rawNext);
+  const error = document.getElementById("manageTagError");
+  if (!next) {
+    if (error) error.textContent = "Use letters, numbers, hyphens, or underscores.";
+    return;
+  }
+  if (next !== from && tagCatalog.includes(next)) {
+    if (error) error.textContent = `Tag “${next}” already exists.`;
+    return;
+  }
+  const res = await fetch(`/tags/${encodeURIComponent(from)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tag: next })
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    if (error) error.textContent = data.error || "Could not rename tag";
+    return;
+  }
+  if (Array.isArray(data.tags)) tagCatalog = data.tags;
+  manageTagEditing = "";
+  if (error) error.textContent = "";
+  await fetchPlaylists();
+  await fetchDevices();
+  if (isPlaylistEditorOpen()) loadEditorFromSelection();
+  renderManageTags();
+}
+
+async function deleteManagedTag(tag) {
+  const error = document.getElementById("manageTagError");
+  const res = await fetch(`/tags/${encodeURIComponent(tag)}`, { method: "DELETE" });
+  const data = await res.json();
+  if (!res.ok) {
+    if (error) error.textContent = data.error || "Could not delete tag";
+    return;
+  }
+  if (Array.isArray(data.tags)) tagCatalog = data.tags;
+  createdScreenTags.delete(tag);
+  if (error) error.textContent = "";
+  renderManageTags();
+  renderDeviceCards();
+}
+
+async function addDeviceTag(deviceId) {
+  const tag = normalizeEditorTag(tagDraftByDevice[deviceId] || "");
+  if (!tag) {
+    alert("Enter a tag such as screen-a, drive-thru, or breakfast.");
+    return;
+  }
+  const res = await fetch(`/device/${encodeURIComponent(deviceId)}/tags`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tag })
+  });
+  const data = await res.json();
+  showResult(data);
+  if (!res.ok) {
+    alert(data.error || "Could not add tag");
+    return;
+  }
+  delete tagDraftByDevice[deviceId];
+  await fetchDevices();
+}
+
+async function removeDeviceTag(deviceId, tag) {
+  const res = await fetch(
+    `/device/${encodeURIComponent(deviceId)}/tags/${encodeURIComponent(tag)}`,
+    { method: "DELETE" }
+  );
+  const data = await res.json();
+  showResult(data);
+  if (!res.ok) {
+    alert(data.error || "Could not remove tag");
+    return;
+  }
+  await fetchDevices();
+}
+
 function renderDeviceCards() {
   const grid = document.getElementById("devicesGrid");
   if (!grid) return;
+  renderingDeviceCards = true;
   grid.innerHTML = "";
+
+  const filterTag = normalizeEditorTag(document.getElementById("screenTagFilter")?.value || "");
+  const visibleDevices = filterTag
+    ? devicesCache.filter((device) =>
+        (screenTagsByDevice[device.deviceId] || []).includes(filterTag)
+      )
+    : devicesCache;
 
   if (devicesCache.length === 0) {
     const empty = document.createElement("p");
     empty.className = "devices-empty";
     empty.textContent = "No paired devices yet.";
     grid.appendChild(empty);
+    renderingDeviceCards = false;
     return;
   }
 
-  for (const device of devicesCache) {
+  if (visibleDevices.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "devices-empty";
+    empty.textContent = `No screens tagged ${filterTag}.`;
+    grid.appendChild(empty);
+    renderingDeviceCards = false;
+    return;
+  }
+
+  for (const device of visibleDevices) {
     const card = document.createElement("article");
     card.className = "device-card";
 
@@ -1428,11 +2053,99 @@ function renderDeviceCards() {
     actions.appendChild(timerBtn);
     actions.appendChild(unpairBtn);
 
+    const tagsBlock = document.createElement("div");
+    tagsBlock.className = "device-tags";
+    const tagsLabel = document.createElement("div");
+    tagsLabel.className = "device-tags-label";
+    tagsLabel.textContent = "Screen tags";
+    const chips = document.createElement("div");
+    chips.className = "device-tag-chips";
+    const deviceTags = screenTagsByDevice[device.deviceId] || [];
+    if (deviceTags.length === 0) {
+      const none = document.createElement("span");
+      none.className = "device-tag-empty";
+      none.textContent = "No tags — plays items with no screen rule.";
+      chips.appendChild(none);
+    } else {
+      for (const tag of deviceTags) {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "device-tag-chip";
+        chip.textContent = `${tag} ×`;
+        chip.title = `Remove ${tag}`;
+        chip.addEventListener("click", () => void removeDeviceTag(device.deviceId, tag));
+        chips.appendChild(chip);
+      }
+    }
+    const tagRow = document.createElement("div");
+    tagRow.className = "device-tag-add";
+    const picker = document.createElement("div");
+    picker.className = "device-tag-picker";
+    const tagInput = document.createElement("input");
+    tagInput.type = "text";
+    tagInput.placeholder = "Add a tag";
+    tagInput.autocomplete = "off";
+    tagInput.dataset.tagInput = device.deviceId;
+    tagInput.value = tagDraftByDevice[device.deviceId] || "";
+    const tagOptions = document.createElement("ul");
+    tagOptions.className = "tag-rule-options hidden";
+    tagOptions.dataset.tagOptions = device.deviceId;
+    const showOptions = () => showDeviceTagOptions(device.deviceId);
+    tagInput.addEventListener("input", () => {
+      tagDraftByDevice[device.deviceId] = tagInput.value;
+      showOptions();
+    });
+    tagInput.addEventListener("focus", () => {
+      tagInputFocusDeviceId = device.deviceId;
+      showOptions();
+    });
+    tagInput.addEventListener("click", showOptions);
+    tagInput.addEventListener("blur", () => {
+      if (!renderingDeviceCards && tagInputFocusDeviceId === device.deviceId) {
+        tagInputFocusDeviceId = null;
+      }
+      setTimeout(() => {
+        if (tagInputFocusDeviceId !== device.deviceId) tagOptions.classList.add("hidden");
+      }, 150);
+    });
+    tagInput.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") {
+        tagOptions.classList.add("hidden");
+        return;
+      }
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        void addDeviceTag(device.deviceId);
+      }
+    });
+    picker.appendChild(tagInput);
+    picker.appendChild(tagOptions);
+    const addTagBtn = document.createElement("button");
+    addTagBtn.type = "button";
+    addTagBtn.textContent = "Add tag";
+    addTagBtn.addEventListener("click", () => void addDeviceTag(device.deviceId));
+    tagRow.appendChild(picker);
+    tagRow.appendChild(addTagBtn);
+    tagsBlock.appendChild(tagsLabel);
+    tagsBlock.appendChild(chips);
+    tagsBlock.appendChild(tagRow);
+
     card.appendChild(header);
     card.appendChild(published);
     card.appendChild(metaBlock);
+    card.appendChild(tagsBlock);
     card.appendChild(actions);
     grid.appendChild(card);
+  }
+
+  renderingDeviceCards = false;
+  if (tagInputFocusDeviceId) {
+    const el = grid.querySelector(`[data-tag-input="${CSS.escape(tagInputFocusDeviceId)}"]`);
+    if (el instanceof HTMLInputElement) {
+      el.focus();
+      const end = el.value.length;
+      el.setSelectionRange(end, end);
+    }
   }
 }
 
@@ -2000,7 +2713,9 @@ async function addAssetFromFile(file, queueIndex, queueTotal) {
     url: data.url,
     name: file.name,
     type,
-    durationMs
+    durationMs,
+    tagRule: null,
+    schedule: null
   });
   renderEditorAssets();
   showResult({
@@ -2650,12 +3365,68 @@ document.addEventListener("DOMContentLoaded", () => {
     ?.addEventListener("click", () => void fetchServerStatus());
 
   document.getElementById("newPlaylistBtn")?.addEventListener("click", newPlaylistDraft);
+  document.getElementById("screenTagFilter")?.addEventListener("input", () => renderDeviceCards());
+  document.getElementById("manageTagsBtn")?.addEventListener("click", () => void openManageTagsModal());
+  document.querySelectorAll("[data-close-manage-tags]").forEach((el) => {
+    el.addEventListener("click", closeManageTagsModal);
+  });
+  document.getElementById("manageTagAddBtn")?.addEventListener("click", () => void addManagedTag());
+  document.getElementById("manageTagInput")?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void addManagedTag();
+    }
+  });
   document.getElementById("savePlaylistBtn")?.addEventListener("click", () => void saveCurrentPlaylist());
   document.getElementById("deletePlaylistBtn")?.addEventListener("click", () => void deleteCurrentPlaylist());
   document.getElementById("publishConfirmBtn")?.addEventListener("click", () => void confirmPublishModal());
 
   document.querySelectorAll("[data-close-modal]").forEach((el) => {
     el.addEventListener("click", closePublishModal);
+  });
+  document.querySelectorAll("[data-close-tag-rule-modal]").forEach((el) => {
+    el.addEventListener("click", cancelTagRuleModal);
+  });
+  document.getElementById("tagRuleCancelBtn")?.addEventListener("click", cancelTagRuleModal);
+  document.getElementById("tagRuleApplyBtn")?.addEventListener("click", applyTagRuleModal);
+  document.getElementById("tagRuleMatch")?.addEventListener("change", () => {
+    const item = tagRuleModalItem();
+    const match = document.getElementById("tagRuleMatch");
+    if (!item?.tagRule?.tags?.length || !match) return;
+    item.tagRule = { match: match.value, tags: item.tagRule.tags };
+  });
+  const tagRuleAddInput = document.getElementById("tagRuleAddInput");
+  tagRuleAddInput?.addEventListener("focus", showTagRuleOptions);
+  tagRuleAddInput?.addEventListener("click", showTagRuleOptions);
+  tagRuleAddInput?.addEventListener("input", showTagRuleOptions);
+  tagRuleAddInput?.addEventListener("keydown", async (event) => {
+    if (event.key === "Escape") {
+      hideTagRuleOptions();
+      return;
+    }
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    const typed = normalizeEditorTag(tagRuleAddInput.value);
+    if (!typed) return;
+    if (!knownScreenTags().includes(typed)) {
+      if (!(await registerCatalogTag(typed))) return;
+    }
+    addTagToOpenRule(typed);
+  });
+  tagRuleAddInput?.addEventListener("blur", () => {
+    setTimeout(hideTagRuleOptions, 150);
+  });
+  ["itemScheduleStartDate", "itemScheduleEndDate", "itemScheduleStartTime", "itemScheduleEndTime"].forEach((id) => {
+    document.getElementById(id)?.addEventListener("input", applyItemScheduleFromForm);
+    document.getElementById(id)?.addEventListener("change", applyItemScheduleFromForm);
+  });
+  document.querySelectorAll("[data-item-schedule-day]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const on = button.getAttribute("aria-pressed") !== "true";
+      button.setAttribute("aria-pressed", on ? "true" : "false");
+      button.classList.toggle("is-on", on);
+      applyItemScheduleFromForm();
+    });
   });
   document.querySelectorAll("[data-close-screenshot-modal]").forEach((el) => {
     el.addEventListener("click", closeScreenshotModal);

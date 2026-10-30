@@ -24,6 +24,8 @@ export type {
   PendingCodeRecord,
   DeviceRegistryEntry,
   PlaylistItemRecord,
+  PlaylistItemSchedule,
+  PlaylistItemTagRule,
   PlaylistSchedule,
   PublishedPlaylistSnapshot,
   StoredPlaylist,
@@ -32,6 +34,21 @@ export type {
   TomorrowOSStore
 } from "./store/types.js";
 export { PlaylistCatalog } from "./playlist-catalog.js";
+export {
+  filterPolicyForScreen,
+  itemMatchesScreen,
+  itemScheduleActive,
+  parseItemSchedule,
+  parseTagRule,
+  ScreenTagStore
+} from "./screen-tags.js";
+export type {
+  ItemSchedule,
+  ScreenTagHost,
+  ScreenTagHttpDeps,
+  TagRule,
+  TagRuleOp
+} from "./screen-tags.js";
 export type { BuiltDevicePolicy, SavePlaylistInput } from "./playlist-catalog.js";
 export {
   DEFAULT_PAIRING_CODE_SECRET,

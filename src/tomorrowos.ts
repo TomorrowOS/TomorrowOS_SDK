@@ -15,6 +15,12 @@ import {
   resolvePairingCodeSecret
 } from "./pairing-code.js";
 import { PlaylistCatalog, type BuiltDevicePolicy } from "./playlist-catalog.js";
+import {
+  filterPolicyForScreen,
+  handleScreenTagHttp,
+  ScreenTagStore,
+  startItemScheduleRefresher
+} from "./screen-tags.js";
 import type {
   DeviceOnOffTimer,
   DeviceRegistryRecord,
@@ -458,6 +464,14 @@ function sendJson(
   res.end(JSON.stringify(body));
 }
 
+function screenTagFilePath(store: TomorrowOSStore): string {
+  const databasePath = (store as { databasePath?: unknown }).databasePath;
+  if (typeof databasePath === "string" && databasePath && databasePath !== ":memory:") {
+    return path.join(path.dirname(databasePath), "screen-tags.json");
+  }
+  return path.join(process.cwd(), "data", "screen-tags.json");
+}
+
 function parseDevicePath(pathname: string): {
   deviceId: string;
   action: string;
@@ -487,12 +501,15 @@ export class TomorrowOS extends EventEmitter {
   private serverStartedAt: string | null = null;
   /** Port passed to listen(); used for suggested LAN CMS URL. */
   private listenPort: number | null = null;
+  private readonly screenTags: ScreenTagStore;
+  private scheduleRefreshStarted = false;
 
   constructor(options: TomorrowOSOptions) {
     super();
     this.brand = options.brand;
     this.store = options.store ?? new MemoryStore();
     this.playlists = new PlaylistCatalog(this.store);
+    this.screenTags = new ScreenTagStore(screenTagFilePath(this.store));
   }
 
   /** Push all device assignments using latest playlist definitions (e.g. after reboot). */
@@ -526,7 +543,35 @@ export class TomorrowOS extends EventEmitter {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       throw Object.assign(new Error("Device not connected"), { code: "DEVICE_OFFLINE" });
     }
-    return this.sendCommandToSocket(ws, deviceId, method, params);
+    const nextParams = await this.policyParamsForScreen(deviceId, method, params);
+    return this.sendCommandToSocket(ws, deviceId, method, nextParams);
+  }
+
+  /** Re-push connected screens when an item schedule window opens or closes. */
+  private startItemScheduleRefresh(): void {
+    if (this.scheduleRefreshStarted) return;
+    this.scheduleRefreshStarted = true;
+    startItemScheduleRefresher({
+      host: this,
+      store: this.store,
+      tags: this.screenTags
+    });
+  }
+
+  /** Drop playlist items this screen should not play, and hide tag/schedule fields. */
+  private async policyParamsForScreen(
+    deviceId: string,
+    method: string,
+    params: Record<string, unknown>
+  ): Promise<Record<string, unknown>> {
+    if (method !== "device.content.setPolicy" || !params || typeof params.policy !== "object") {
+      return params;
+    }
+    const tags = await this.screenTags.get(deviceId);
+    return {
+      ...params,
+      policy: filterPolicyForScreen(params.policy, tags)
+    };
   }
 
   /** Verify a 6-character alphanumeric pairing code (POST /pairing/verify). */
@@ -630,6 +675,7 @@ export class TomorrowOS extends EventEmitter {
     }
 
     await this.store.deletePairedDevice(id);
+    await this.screenTags.deleteDevice(id);
     this.pendingDeviceMeta.delete(id);
 
     if (screenshotAssetId) {
@@ -1324,6 +1370,7 @@ export class TomorrowOS extends EventEmitter {
 
     this.httpServer = server;
     this.wss = wss;
+    this.startItemScheduleRefresh();
     return server;
   }
 
@@ -2236,6 +2283,13 @@ export class TomorrowOS extends EventEmitter {
       if (pathname.length > 1 && pathname.endsWith("/")) {
         pathname = pathname.slice(0, -1);
       }
+
+      const screenTagsHandled = await handleScreenTagHttp(req, res, {
+        host: this,
+        store: this.store,
+        tags: this.screenTags
+      });
+      if (screenTagsHandled) return;
 
       /** Same-origin brand for TomorrowOS players (e.g. GET /brand.json + applyBrand). */
       if (method === "GET" && pathname === "/brand.json") {

@@ -65,11 +65,31 @@ export interface DeviceRegistryEntry {
   record: DeviceRegistryRecord;
 }
 
+/** Which screens play this playlist item. No rule means every screen. */
+export interface PlaylistItemTagRule {
+  match: "any" | "all" | "notAny" | "notAll";
+  tags: string[];
+}
+
+/**
+ * When this playlist item plays. Days are Monday-first:
+ * index 0 is Monday and index 6 is Sunday. No schedule means all the time.
+ */
+export interface PlaylistItemSchedule {
+  startDate?: string;
+  endDate?: string;
+  startTime?: string;
+  endTime?: string;
+  days?: boolean[];
+}
+
 export interface PlaylistItemRecord {
   url: string;
   assetId?: string;
   type?: string;
   durationMs?: number;
+  tagRule?: PlaylistItemTagRule;
+  schedule?: PlaylistItemSchedule;
 }
 
 export interface UploadedAssetRecord {
@@ -143,6 +163,8 @@ export interface TomorrowOSStore {
   listPlaylists(): Promise<StoredPlaylist[]>;
   getPlaylist(id: string): Promise<StoredPlaylist | undefined>;
   setPlaylist(record: StoredPlaylist): Promise<void>;
+  deletePlaylist(id: string): Promise<void>;
+  isPlaylistAssigned(playlistId: string): Promise<boolean>;
   isPlaylistNameTaken(name: string, excludeId?: string): Promise<boolean>;
   getUploadedAsset(id: string): Promise<UploadedAssetRecord | undefined>;
   getUploadedAssetBySha256(sha256: string): Promise<UploadedAssetRecord | undefined>;

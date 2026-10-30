@@ -586,6 +586,20 @@ export class PostgresStore implements TomorrowOSMigratableStore {
     return row ? this.mapPlaylistRow(row) : undefined;
   }
 
+  async deletePlaylist(id: string): Promise<void> {
+    await this.ensureReady();
+    await this.pool.query("DELETE FROM playlists WHERE id = $1", [id]);
+  }
+
+  async isPlaylistAssigned(playlistId: string): Promise<boolean> {
+    await this.ensureReady();
+    const result = await this.pool.query(
+      "SELECT 1 FROM device_assignments WHERE playlist_id = $1 LIMIT 1",
+      [playlistId]
+    );
+    return result.rows.length > 0;
+  }
+
   async setPlaylist(record: StoredPlaylist): Promise<void> {
     await this.ensureReady();
     await this.pool.query(`

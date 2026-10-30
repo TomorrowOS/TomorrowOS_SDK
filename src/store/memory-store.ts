@@ -98,6 +98,19 @@ export class MemoryStore implements TomorrowOSStore {
     this.playlists.set(record.id, record);
   }
 
+  async deletePlaylist(id: string): Promise<void> {
+    this.playlists.delete(id);
+  }
+
+  async isPlaylistAssigned(playlistId: string): Promise<boolean> {
+    for (const assignments of this.deviceAssignments.values()) {
+      if (assignments.some((assignment) => assignment.playlistId === playlistId)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   async isPlaylistNameTaken(name: string, excludeId?: string): Promise<boolean> {
     const target = name.trim().toLowerCase();
     for (const playlist of this.playlists.values()) {

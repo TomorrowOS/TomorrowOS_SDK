@@ -140,7 +140,11 @@ export class PlaylistCatalog {
       retired: true,
       retiredAt: new Date().toISOString()
     };
-    await this.store.setPlaylist(record);
+    if (await this.store.isPlaylistAssigned(id)) {
+      await this.store.setPlaylist(record);
+      return record;
+    }
+    await this.store.deletePlaylist(id);
     return record;
   }
 
@@ -226,13 +230,31 @@ export class PlaylistCatalog {
     const assignments = await this.store.getDeviceAssignments(deviceId);
     const next = assignments.filter((a) => a.playlistId !== playlistId);
     await this.store.setDeviceAssignments(deviceId, next);
+    await this.deleteRetiredPlaylistsWithoutAssignments([playlistId]);
     return this.buildPolicyFromAssignments(next, { useLatest: false });
   }
 
   /** Remove every playlist assignment from a device (CMS catalog + empty policy). */
   async clearAllAssignmentsFromDevice(deviceId: string): Promise<BuiltDevicePolicy> {
+    const removedIds = (await this.store.getDeviceAssignments(deviceId)).map(
+      (assignment) => assignment.playlistId
+    );
     await this.store.setDeviceAssignments(deviceId, []);
+    await this.deleteRetiredPlaylistsWithoutAssignments(removedIds);
     return this.buildPolicyFromAssignments([], { useLatest: false });
+  }
+
+  /**
+   * A retired playlist stays only while some device still has its published snapshot.
+   * Clear (or removing it from the last screen) drops that snapshot, so the row goes too.
+   */
+  private async deleteRetiredPlaylistsWithoutAssignments(playlistIds: string[]): Promise<void> {
+    for (const playlistId of new Set(playlistIds)) {
+      const playlist = await this.store.getPlaylist(playlistId);
+      if (!playlist?.retired) continue;
+      if (await this.store.isPlaylistAssigned(playlistId)) continue;
+      await this.store.deletePlaylist(playlistId);
+    }
   }
 
   /**

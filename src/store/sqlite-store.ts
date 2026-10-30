@@ -642,6 +642,20 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
     return row ? this.mapPlaylistRow(row) : undefined;
   }
 
+  async deletePlaylist(id: string): Promise<void> {
+    this.db.prepare("DELETE FROM playlists WHERE id = ?").run(id);
+  }
+
+  async isPlaylistAssigned(playlistId: string): Promise<boolean> {
+    const row = this.db.prepare(`
+      SELECT 1 AS found
+      FROM device_assignments
+      WHERE playlist_id = ?
+      LIMIT 1
+    `).get(playlistId) as { found: number } | undefined;
+    return !!row;
+  }
+
   async setPlaylist(record: StoredPlaylist): Promise<void> {
     this.db.prepare(`
       INSERT INTO playlists (
