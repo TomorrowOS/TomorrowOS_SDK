@@ -42,6 +42,12 @@ export {
   parseTagRule,
   ScreenTagStore
 } from "./screen-tags.js";
+export {
+  parseScreenReferences,
+  policyWithScreenReferences,
+  ScreenReferenceStore
+} from "./screen-references.js";
+export type { ScreenReferenceHost, ScreenReferences } from "./screen-references.js";
 export type {
   ItemSchedule,
   ScreenTagHost,

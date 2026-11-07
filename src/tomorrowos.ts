@@ -16,6 +16,11 @@ import {
 } from "./pairing-code.js";
 import { PlaylistCatalog, type BuiltDevicePolicy } from "./playlist-catalog.js";
 import {
+  handleScreenReferenceHttp,
+  policyWithScreenReferences,
+  ScreenReferenceStore
+} from "./screen-references.js";
+import {
   filterPolicyForScreen,
   handleScreenTagHttp,
   ScreenTagStore,
@@ -464,12 +469,12 @@ function sendJson(
   res.end(JSON.stringify(body));
 }
 
-function screenTagFilePath(store: TomorrowOSStore): string {
+function screenDataFilePath(store: TomorrowOSStore, fileName: string): string {
   const databasePath = (store as { databasePath?: unknown }).databasePath;
   if (typeof databasePath === "string" && databasePath && databasePath !== ":memory:") {
-    return path.join(path.dirname(databasePath), "screen-tags.json");
+    return path.join(path.dirname(databasePath), fileName);
   }
-  return path.join(process.cwd(), "data", "screen-tags.json");
+  return path.join(process.cwd(), "data", fileName);
 }
 
 function parseDevicePath(pathname: string): {
@@ -502,6 +507,7 @@ export class TomorrowOS extends EventEmitter {
   /** Port passed to listen(); used for suggested LAN CMS URL. */
   private listenPort: number | null = null;
   private readonly screenTags: ScreenTagStore;
+  private readonly screenReferences: ScreenReferenceStore;
   private scheduleRefreshStarted = false;
 
   constructor(options: TomorrowOSOptions) {
@@ -509,7 +515,10 @@ export class TomorrowOS extends EventEmitter {
     this.brand = options.brand;
     this.store = options.store ?? new MemoryStore();
     this.playlists = new PlaylistCatalog(this.store);
-    this.screenTags = new ScreenTagStore(screenTagFilePath(this.store));
+    this.screenTags = new ScreenTagStore(screenDataFilePath(this.store, "screen-tags.json"));
+    this.screenReferences = new ScreenReferenceStore(
+      screenDataFilePath(this.store, "screen-references.json")
+    );
   }
 
   /** Push all device assignments using latest playlist definitions (e.g. after reboot). */
@@ -568,9 +577,10 @@ export class TomorrowOS extends EventEmitter {
       return params;
     }
     const tags = await this.screenTags.get(deviceId);
+    const references = await this.screenReferences.get(deviceId);
     return {
       ...params,
-      policy: filterPolicyForScreen(params.policy, tags)
+      policy: policyWithScreenReferences(filterPolicyForScreen(params.policy, tags), references)
     };
   }
 
@@ -676,6 +686,7 @@ export class TomorrowOS extends EventEmitter {
 
     await this.store.deletePairedDevice(id);
     await this.screenTags.deleteDevice(id);
+    await this.screenReferences.deleteDevice(id);
     this.pendingDeviceMeta.delete(id);
 
     if (screenshotAssetId) {
@@ -2290,6 +2301,13 @@ export class TomorrowOS extends EventEmitter {
         tags: this.screenTags
       });
       if (screenTagsHandled) return;
+
+      const screenReferencesHandled = await handleScreenReferenceHttp(req, res, {
+        host: this,
+        store: this.store,
+        references: this.screenReferences
+      });
+      if (screenReferencesHandled) return;
 
       /** Same-origin brand for TomorrowOS players (e.g. GET /brand.json + applyBrand). */
       if (method === "GET" && pathname === "/brand.json") {
