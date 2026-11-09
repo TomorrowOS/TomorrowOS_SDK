@@ -140,6 +140,12 @@ export interface DevicePlaylistAssignment {
   snapshot: PublishedPlaylistSnapshot;
 }
 
+/** Tags attached to screens, plus the shared tag catalog. */
+export interface ScreenTagState {
+  catalog: string[];
+  devices: Record<string, string[]>;
+}
+
 /**
  * Implement with Postgres, Redis, etc. Defaults to MemoryStore (Map).
  * All methods async so DB backends do not need sync adapters.
@@ -175,6 +181,18 @@ export interface TomorrowOSStore {
     deviceId: string,
     assignments: DevicePlaylistAssignment[]
   ): Promise<void>;
+  getScreenTagState(): Promise<ScreenTagState>;
+  replaceScreenTagState(state: ScreenTagState): Promise<void>;
+  getScreenReferences(deviceId: string): Promise<Record<string, string>>;
+  listScreenReferences(): Promise<Record<string, Record<string, string>>>;
+  setScreenReferences(
+    deviceId: string,
+    references: Record<string, string>
+  ): Promise<void>;
+  deleteScreenReferences(deviceId: string): Promise<void>;
+  replaceScreenReferences(
+    devices: Record<string, Record<string, string>>
+  ): Promise<void>;
 }
 
 export interface TomorrowOSDataSnapshot {
@@ -186,6 +204,16 @@ export interface TomorrowOSDataSnapshot {
   deviceAssignments: Array<{
     deviceId: string;
     assignments: DevicePlaylistAssignment[];
+  }>;
+  /** Absent on snapshots exported before screen tags lived in the database. */
+  screenTags?: {
+    catalog: string[];
+    devices: Array<{ deviceId: string; tags: string[] }>;
+  };
+  /** Absent on snapshots exported before screen references lived in the database. */
+  screenReferences?: Array<{
+    deviceId: string;
+    references: Record<string, string>;
   }>;
 }
 

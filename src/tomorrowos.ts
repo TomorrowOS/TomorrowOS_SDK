@@ -364,7 +364,8 @@ function resolveLastBootAt(
   return new Date(Math.min(inMs, exMs)).toISOString();
 }
 
-function resolveHelloDeviceId(msg: Record<string, unknown>): string | null {
+/** Identity for hello and resume: hardware serial when the message has one, otherwise deviceId. */
+function resolveSessionDeviceId(msg: Record<string, unknown>): string | null {
   const serial =
     typeof msg.serialNumber === "string" && msg.serialNumber.trim()
       ? msg.serialNumber.trim()
@@ -469,12 +470,12 @@ function sendJson(
   res.end(JSON.stringify(body));
 }
 
-function screenDataFilePath(store: TomorrowOSStore, fileName: string): string {
+function screenDataDirectory(store: TomorrowOSStore): string {
   const databasePath = (store as { databasePath?: unknown }).databasePath;
   if (typeof databasePath === "string" && databasePath && databasePath !== ":memory:") {
-    return path.join(path.dirname(databasePath), fileName);
+    return path.dirname(databasePath);
   }
-  return path.join(process.cwd(), "data", fileName);
+  return path.join(process.cwd(), "data");
 }
 
 function parseDevicePath(pathname: string): {
@@ -515,10 +516,9 @@ export class TomorrowOS extends EventEmitter {
     this.brand = options.brand;
     this.store = options.store ?? new MemoryStore();
     this.playlists = new PlaylistCatalog(this.store);
-    this.screenTags = new ScreenTagStore(screenDataFilePath(this.store, "screen-tags.json"));
-    this.screenReferences = new ScreenReferenceStore(
-      screenDataFilePath(this.store, "screen-references.json")
-    );
+    const screenDataDirectoryPath = screenDataDirectory(this.store);
+    this.screenTags = new ScreenTagStore(this.store, screenDataDirectoryPath);
+    this.screenReferences = new ScreenReferenceStore(this.store, screenDataDirectoryPath);
   }
 
   /** Push all device assignments using latest playlist definitions (e.g. after reboot). */
@@ -2860,7 +2860,7 @@ export class TomorrowOS extends EventEmitter {
       const type = msg.type;
 
       if (type === "device.hello") {
-        const deviceId = resolveHelloDeviceId(msg) ?? randomUUID();
+        const deviceId = resolveSessionDeviceId(msg) ?? randomUUID();
         const serialNumber =
           typeof msg.serialNumber === "string" && msg.serialNumber.trim()
             ? msg.serialNumber.trim()
@@ -2923,12 +2923,14 @@ export class TomorrowOS extends EventEmitter {
       }
 
       if (type === "device.resume") {
-        const deviceId = String(msg.deviceId ?? "");
+        const deviceId = resolveSessionDeviceId(msg);
         const pairingToken = String(msg.pairingToken ?? "");
 
         void (async () => {
-          const record = await this.store.getPairedDevice(deviceId);
-          if (!record || record.pairingToken !== pairingToken) {
+          const record = deviceId
+            ? await this.store.getPairedDevice(deviceId)
+            : undefined;
+          if (!deviceId || !record || record.pairingToken !== pairingToken) {
             ws.send(
               JSON.stringify({
                 type: "device.resume.failed",

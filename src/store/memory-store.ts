@@ -4,6 +4,7 @@ import type {
   PairedDeviceEntry,
   PairedDeviceRecord,
   PendingCodeRecord,
+  ScreenTagState,
   StoredPlaylist,
   TomorrowOSStore,
   UploadedAssetRecord
@@ -21,6 +22,8 @@ export class MemoryStore implements TomorrowOSStore {
   private readonly playlists = new Map<string, StoredPlaylist>();
   private readonly uploadedAssets = new Map<string, UploadedAssetRecord>();
   private readonly deviceAssignments = new Map<string, DevicePlaylistAssignment[]>();
+  private screenTags: ScreenTagState = { catalog: [], devices: {} };
+  private readonly screenReferences = new Map<string, Record<string, string>>();
 
   async setPendingCode(code: string, record: PendingCodeRecord): Promise<void> {
     this.pendingCodes.set(code, record);
@@ -161,5 +164,58 @@ export class MemoryStore implements TomorrowOSStore {
         items: a.snapshot.items.map((item) => ({ ...item }))
       }
     })));
+  }
+
+  async getScreenTagState(): Promise<ScreenTagState> {
+    const devices: Record<string, string[]> = {};
+    for (const [deviceId, tags] of Object.entries(this.screenTags.devices)) {
+      devices[deviceId] = tags.slice();
+    }
+    return { catalog: this.screenTags.catalog.slice(), devices };
+  }
+
+  async replaceScreenTagState(state: ScreenTagState): Promise<void> {
+    const devices: Record<string, string[]> = {};
+    for (const [deviceId, tags] of Object.entries(state.devices)) {
+      if (tags.length > 0) devices[deviceId] = tags.slice();
+    }
+    this.screenTags = { catalog: state.catalog.slice(), devices };
+  }
+
+  async getScreenReferences(deviceId: string): Promise<Record<string, string>> {
+    return { ...(this.screenReferences.get(deviceId) ?? {}) };
+  }
+
+  async listScreenReferences(): Promise<Record<string, Record<string, string>>> {
+    const out: Record<string, Record<string, string>> = {};
+    for (const [deviceId, references] of this.screenReferences) {
+      out[deviceId] = { ...references };
+    }
+    return out;
+  }
+
+  async setScreenReferences(
+    deviceId: string,
+    references: Record<string, string>
+  ): Promise<void> {
+    if (Object.keys(references).length === 0) {
+      this.screenReferences.delete(deviceId);
+      return;
+    }
+    this.screenReferences.set(deviceId, { ...references });
+  }
+
+  async deleteScreenReferences(deviceId: string): Promise<void> {
+    this.screenReferences.delete(deviceId);
+  }
+
+  async replaceScreenReferences(
+    devices: Record<string, Record<string, string>>
+  ): Promise<void> {
+    this.screenReferences.clear();
+    for (const [deviceId, references] of Object.entries(devices)) {
+      if (Object.keys(references).length === 0) continue;
+      this.screenReferences.set(deviceId, { ...references });
+    }
   }
 }

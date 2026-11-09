@@ -1,24 +1,22 @@
 /**
  * Per-screen key/value references.
  *
- * Stored in screen-references.json beside the database. Each setPolicy for a
- * screen includes that screen's references. The shared playlist is unchanged.
+ * Stored in the database (screen_references). Each setPolicy for a screen
+ * includes that screen's references. The shared playlist is unchanged.
  * The default CMS panel does not edit these; a product UI calls the HTTP routes.
+ * An existing screen-references.json is imported once, then renamed to
+ * screen-references.json.imported.
  */
 
-import { mkdir, readFile, rename, writeFile } from "fs/promises";
 import type { IncomingMessage, ServerResponse } from "http";
-import { dirname } from "path";
+import type { TomorrowOSStore } from "./store/types.js";
+import { ensureStoreLegacyScreenData } from "./store/legacy-screen-files.js";
 
 const KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 const MAX_KEYS = 32;
 const MAX_VALUE_LENGTH = 500;
 
 export type ScreenReferences = Record<string, string>;
-
-interface ReferenceFile {
-  devices: Record<string, ScreenReferences>;
-}
 
 export interface ScreenReferenceHost {
   pushLatestPolicyToDevice(deviceId: string): Promise<{ pushed: boolean }>;
@@ -65,75 +63,45 @@ export function policyWithScreenReferences(
 }
 
 export class ScreenReferenceStore {
-  constructor(private readonly filePath: string) {}
+  private legacyImport?: Promise<void>;
+
+  constructor(
+    private readonly store: TomorrowOSStore,
+    private readonly legacyDirectory: string
+  ) {}
+
+  private ensureLegacy(): Promise<void> {
+    this.legacyImport ??= ensureStoreLegacyScreenData(this.store, this.legacyDirectory);
+    return this.legacyImport;
+  }
 
   async get(deviceId: string): Promise<ScreenReferences> {
-    const file = await this.read();
-    return { ...(file.devices[deviceId] ?? {}) };
+    await this.ensureLegacy();
+    return this.store.getScreenReferences(deviceId);
   }
 
   async all(): Promise<Record<string, ScreenReferences>> {
-    const file = await this.read();
-    const out: Record<string, ScreenReferences> = {};
-    for (const [deviceId, references] of Object.entries(file.devices)) {
-      out[deviceId] = { ...references };
-    }
-    return out;
+    await this.ensureLegacy();
+    return this.store.listScreenReferences();
   }
 
   async replace(deviceId: string, references: ScreenReferences): Promise<ScreenReferences> {
-    const file = await this.read();
-    if (Object.keys(references).length === 0) delete file.devices[deviceId];
-    else file.devices[deviceId] = references;
-    await this.write(file);
+    await this.ensureLegacy();
+    await this.store.setScreenReferences(deviceId, references);
     return { ...references };
   }
 
   async removeKey(deviceId: string, key: string): Promise<ScreenReferences> {
-    const file = await this.read();
-    const current = { ...(file.devices[deviceId] ?? {}) };
+    await this.ensureLegacy();
+    const current = await this.store.getScreenReferences(deviceId);
     delete current[key];
-    if (Object.keys(current).length === 0) delete file.devices[deviceId];
-    else file.devices[deviceId] = current;
-    await this.write(file);
+    await this.store.setScreenReferences(deviceId, current);
     return current;
   }
 
   async deleteDevice(deviceId: string): Promise<void> {
-    const file = await this.read();
-    if (!file.devices[deviceId]) return;
-    delete file.devices[deviceId];
-    await this.write(file);
-  }
-
-  private async read(): Promise<ReferenceFile> {
-    try {
-      const raw = JSON.parse(await readFile(this.filePath, "utf8")) as {
-        devices?: Record<string, ScreenReferences>;
-      };
-      const devices: Record<string, ScreenReferences> = {};
-      if (raw?.devices && typeof raw.devices === "object") {
-        for (const [deviceId, references] of Object.entries(raw.devices)) {
-          try {
-            devices[deviceId] = parseScreenReferences(references);
-          } catch {
-            devices[deviceId] = {};
-          }
-        }
-      }
-      return { devices };
-    } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
-      if (code === "ENOENT") return { devices: {} };
-      throw err;
-    }
-  }
-
-  private async write(file: ReferenceFile): Promise<void> {
-    await mkdir(dirname(this.filePath), { recursive: true });
-    const tmp = `${this.filePath}.${process.pid}.tmp`;
-    await writeFile(tmp, JSON.stringify(file, null, 2), "utf8");
-    await rename(tmp, this.filePath);
+    await this.ensureLegacy();
+    await this.store.deleteScreenReferences(deviceId);
   }
 }
 

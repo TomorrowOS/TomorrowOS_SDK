@@ -13,11 +13,20 @@ import type {
   PendingCodeRecord,
   PlaylistSchedule,
   PublishedPlaylistSnapshot,
+  ScreenTagState,
   StoredPlaylist,
   TomorrowOSMigratableStore,
   UploadedAssetRecord
 } from "./types.js";
 import { normalizePublishedPlaylistSnapshot } from "./snapshot-utils.js";
+import {
+  LEGACY_SCREEN_REFERENCES_FILE,
+  LEGACY_SCREEN_TAGS_FILE,
+  archiveLegacyFileSync,
+  importLegacyScreenFiles,
+  readLegacyScreenReferencesSync,
+  readLegacyScreenTagsSync
+} from "./legacy-screen-files.js";
 
 interface SQLiteStoreOptions {
   databasePath?: string;
@@ -101,6 +110,21 @@ function parseJson<T>(raw: string | null, fallback: T): T {
   return JSON.parse(raw) as T;
 }
 
+function parseStringArray(raw: string | null): string[] {
+  const value = parseJson<unknown>(raw, []);
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function parseReferenceRecord(raw: string | null): Record<string, string> {
+  const value = parseJson<unknown>(raw, {});
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof item === "string") out[key] = item;
+  }
+  return out;
+}
+
 /**
  * Durable single-node store backed by a local SQLite database.
  * For multi-instance production, inject a Postgres/Supabase-backed TomorrowOSStore instead.
@@ -108,6 +132,7 @@ function parseJson<T>(raw: string | null, fallback: T): T {
 export class SQLiteStore implements TomorrowOSMigratableStore {
   readonly databasePath: string;
   private readonly db: Database.Database;
+  private legacyImport?: Promise<void>;
 
   constructor(options: SQLiteStoreOptions | string = {}) {
     const databasePath =
@@ -207,6 +232,21 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
       CREATE INDEX IF NOT EXISTS uploaded_assets_sha256_idx
         ON uploaded_assets (sha256);
 
+      CREATE TABLE IF NOT EXISTS screen_tag_catalog (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        tags_json TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS screen_device_tags (
+        device_id TEXT PRIMARY KEY,
+        tags_json TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS screen_references (
+        device_id TEXT PRIMARY KEY,
+        references_json TEXT NOT NULL
+      );
+
       INSERT OR IGNORE INTO schema_migrations (id, name)
         VALUES (1, 'initial_tomorrowos_store');
     `);
@@ -218,6 +258,7 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
     this.addColumnIfMissing("device_registry", "display_name TEXT");
     this.migrateDropPlaylistVersionColumns();
     this.migrateDropUploadedAssetStorageProvider();
+    this.importLegacyScreenFilesSync();
   }
 
   private migrateDropUploadedAssetStorageProvider(): void {
@@ -826,6 +867,161 @@ export class SQLiteStore implements TomorrowOSMigratableStore {
     });
 
     replaceAssignments();
+  }
+
+  async loadLegacyScreenFiles(): Promise<void> {
+    if (this.databasePath === ":memory:") return;
+    this.legacyImport ??= importLegacyScreenFiles(
+      this,
+      path.dirname(this.databasePath),
+      {
+        readScreenTagState: async () => this.readScreenTagState(),
+        writeScreenTagState: async (state) => {
+          this.writeScreenTagState(state);
+        },
+        readScreenReferences: async () => this.readScreenReferences(),
+        writeScreenReferences: async (devices) => {
+          this.writeScreenReferences(devices);
+        }
+      }
+    );
+    await this.legacyImport;
+  }
+
+  async getScreenTagState(): Promise<ScreenTagState> {
+    await this.loadLegacyScreenFiles();
+    return this.readScreenTagState();
+  }
+
+  async replaceScreenTagState(state: ScreenTagState): Promise<void> {
+    await this.loadLegacyScreenFiles();
+    this.writeScreenTagState(state);
+  }
+
+  async getScreenReferences(deviceId: string): Promise<Record<string, string>> {
+    await this.loadLegacyScreenFiles();
+    return this.readScreenReferences()[deviceId] ?? {};
+  }
+
+  async listScreenReferences(): Promise<Record<string, Record<string, string>>> {
+    await this.loadLegacyScreenFiles();
+    return this.readScreenReferences();
+  }
+
+  async setScreenReferences(
+    deviceId: string,
+    references: Record<string, string>
+  ): Promise<void> {
+    await this.loadLegacyScreenFiles();
+    if (Object.keys(references).length === 0) {
+      this.db.prepare("DELETE FROM screen_references WHERE device_id = ?").run(deviceId);
+      return;
+    }
+    this.db.prepare(`
+      INSERT INTO screen_references (device_id, references_json)
+      VALUES (?, ?)
+      ON CONFLICT(device_id) DO UPDATE SET
+        references_json = excluded.references_json
+    `).run(deviceId, JSON.stringify(references));
+  }
+
+  async deleteScreenReferences(deviceId: string): Promise<void> {
+    await this.loadLegacyScreenFiles();
+    this.db.prepare("DELETE FROM screen_references WHERE device_id = ?").run(deviceId);
+  }
+
+  async replaceScreenReferences(
+    devices: Record<string, Record<string, string>>
+  ): Promise<void> {
+    await this.loadLegacyScreenFiles();
+    this.writeScreenReferences(devices);
+  }
+
+  private readScreenTagState(): ScreenTagState {
+    const catalogRow = this.db.prepare(`
+      SELECT tags_json
+      FROM screen_tag_catalog
+      WHERE id = 1
+    `).get() as { tags_json: string } | undefined;
+    const rows = this.db.prepare(`
+      SELECT device_id, tags_json
+      FROM screen_device_tags
+    `).all() as Array<{ device_id: string; tags_json: string }>;
+    const devices: Record<string, string[]> = {};
+    for (const row of rows) {
+      const tags = parseStringArray(row.tags_json);
+      if (tags.length > 0) devices[row.device_id] = tags;
+    }
+    return { catalog: parseStringArray(catalogRow?.tags_json ?? null), devices };
+  }
+
+  private writeScreenTagState(state: ScreenTagState): void {
+    const replace = this.db.transaction(() => {
+      this.db.prepare("DELETE FROM screen_device_tags").run();
+      this.db.prepare(`
+        INSERT INTO screen_tag_catalog (id, tags_json)
+        VALUES (1, ?)
+        ON CONFLICT(id) DO UPDATE SET tags_json = excluded.tags_json
+      `).run(JSON.stringify(state.catalog));
+      const insert = this.db.prepare(`
+        INSERT INTO screen_device_tags (device_id, tags_json)
+        VALUES (?, ?)
+      `);
+      for (const [deviceId, tags] of Object.entries(state.devices)) {
+        if (tags.length === 0) continue;
+        insert.run(deviceId, JSON.stringify(tags));
+      }
+    });
+    replace();
+  }
+
+  private readScreenReferences(): Record<string, Record<string, string>> {
+    const rows = this.db.prepare(`
+      SELECT device_id, references_json
+      FROM screen_references
+    `).all() as Array<{ device_id: string; references_json: string }>;
+    const devices: Record<string, Record<string, string>> = {};
+    for (const row of rows) {
+      const references = parseReferenceRecord(row.references_json);
+      if (Object.keys(references).length > 0) devices[row.device_id] = references;
+    }
+    return devices;
+  }
+
+  private writeScreenReferences(devices: Record<string, Record<string, string>>): void {
+    const replace = this.db.transaction(() => {
+      this.db.prepare("DELETE FROM screen_references").run();
+      const insert = this.db.prepare(`
+        INSERT INTO screen_references (device_id, references_json)
+        VALUES (?, ?)
+      `);
+      for (const [deviceId, references] of Object.entries(devices)) {
+        if (Object.keys(references).length === 0) continue;
+        insert.run(deviceId, JSON.stringify(references));
+      }
+    });
+    replace();
+  }
+
+  private importLegacyScreenFilesSync(): void {
+    if (this.databasePath === ":memory:") return;
+    const directory = path.dirname(this.databasePath);
+    const tags = readLegacyScreenTagsSync(directory);
+    const currentTags = this.readScreenTagState();
+    if (
+      tags &&
+      currentTags.catalog.length === 0 &&
+      Object.keys(currentTags.devices).length === 0
+    ) {
+      this.writeScreenTagState(tags);
+      archiveLegacyFileSync(path.join(directory, LEGACY_SCREEN_TAGS_FILE));
+    }
+    const references = readLegacyScreenReferencesSync(directory);
+    if (references && Object.keys(this.readScreenReferences()).length === 0) {
+      this.writeScreenReferences(references);
+      archiveLegacyFileSync(path.join(directory, LEGACY_SCREEN_REFERENCES_FILE));
+    }
+    this.legacyImport = Promise.resolve();
   }
 
   private mapDeviceRegistryRow(row: DeviceRegistryRow): DeviceRegistryRecord {

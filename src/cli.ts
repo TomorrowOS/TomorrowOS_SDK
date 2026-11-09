@@ -235,6 +235,8 @@ async function cmdMigrate(argv: string[]): Promise<void> {
     console.log(`  paired devices: ${result.pairedDevices}`);
     console.log(`  playlists: ${result.playlists}`);
     console.log(`  device assignments: ${result.deviceAssignments}`);
+    console.log(`  screen tags: ${result.screenTagCatalog} in catalog, ${result.screenTags} screens`);
+    console.log(`  screen references: ${result.screenReferences} screens`);
     console.log(
       "[tomorrowos] Note: media files in public/uploads or object storage are not copied by database migration."
     );

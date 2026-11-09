@@ -28,6 +28,7 @@ export type {
   PlaylistItemTagRule,
   PlaylistSchedule,
   PublishedPlaylistSnapshot,
+  ScreenTagState,
   StoredPlaylist,
   TomorrowOSDataSnapshot,
   TomorrowOSMigratableStore,

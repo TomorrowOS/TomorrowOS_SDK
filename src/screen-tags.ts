@@ -7,18 +7,18 @@
  * play all the time. tagRule and schedule are stripped before the player sees
  * the policy.
  *
- * Screen tags live in screen-tags.json beside the SQLite database (or
- * data/screen-tags.json). Playlist item rules ride along in items JSON.
+ * Screen tags live in the database (screen_tag_catalog and screen_device_tags).
+ * Playlist item rules ride along in items JSON. An existing screen-tags.json
+ * is imported once, then renamed to screen-tags.json.imported.
  */
 
-import { mkdir, readFile, rename, writeFile } from "fs/promises";
 import type { IncomingMessage, ServerResponse } from "http";
-import { dirname } from "path";
 import type {
   DevicePlaylistAssignment,
   StoredPlaylist,
   TomorrowOSStore
 } from "./store/types.js";
+import { ensureStoreLegacyScreenData } from "./store/legacy-screen-files.js";
 
 export interface ScreenTagHost {
   listDevices(): Promise<
@@ -385,8 +385,17 @@ interface TagFile {
 
 export class ScreenTagStore {
   private chain: Promise<void> = Promise.resolve();
+  private legacyImport?: Promise<void>;
 
-  constructor(private readonly filePath: string) {}
+  constructor(
+    private readonly store: TomorrowOSStore,
+    private readonly legacyDirectory: string
+  ) {}
+
+  private ensureLegacy(): Promise<void> {
+    this.legacyImport ??= ensureStoreLegacyScreenData(this.store, this.legacyDirectory);
+    return this.legacyImport;
+  }
 
   async get(deviceId: string): Promise<string[]> {
     const all = await this.read();
@@ -494,35 +503,24 @@ export class ScreenTagStore {
   }
 
   private async read(): Promise<TagFile> {
-    try {
-      const raw = await readFile(this.filePath, "utf8");
-      const parsed = JSON.parse(raw) as { devices?: unknown; catalog?: unknown };
-      const devices: Record<string, string[]> = {};
-      if (parsed.devices && typeof parsed.devices === "object") {
-        for (const [deviceId, tags] of Object.entries(parsed.devices)) {
-          devices[deviceId] = normalizeTagList(tags);
-        }
-      }
-      const catalog = normalizeTagList(parsed.catalog);
-      for (const tags of Object.values(devices)) {
-        for (const tag of tags) {
-          if (!catalog.includes(tag)) catalog.push(tag);
-        }
-      }
-      catalog.sort();
-      return { devices, catalog };
-    } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
-      if (code === "ENOENT") return { devices: {}, catalog: [] };
-      throw err;
+    await this.ensureLegacy();
+    const state = await this.store.getScreenTagState();
+    const devices: Record<string, string[]> = {};
+    for (const [deviceId, tags] of Object.entries(state.devices)) {
+      devices[deviceId] = tags.slice();
     }
+    return { devices, catalog: state.catalog.slice() };
   }
 
   private async write(file: TagFile): Promise<void> {
-    await mkdir(dirname(this.filePath), { recursive: true });
-    const tmp = `${this.filePath}.${process.pid}.tmp`;
-    await writeFile(tmp, JSON.stringify(file, null, 2), "utf8");
-    await rename(tmp, this.filePath);
+    const devices: Record<string, string[]> = {};
+    for (const [deviceId, tags] of Object.entries(file.devices)) {
+      if (tags.length > 0) devices[deviceId] = tags.slice();
+    }
+    await this.store.replaceScreenTagState({
+      catalog: file.catalog.slice(),
+      devices
+    });
   }
 }
 

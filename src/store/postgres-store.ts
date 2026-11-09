@@ -1,3 +1,4 @@
+import path from "path";
 import { Pool, type PoolConfig } from "pg";
 
 import type {
@@ -11,11 +12,13 @@ import type {
   PendingCodeRecord,
   PlaylistSchedule,
   PublishedPlaylistSnapshot,
+  ScreenTagState,
   StoredPlaylist,
   TomorrowOSMigratableStore,
   UploadedAssetRecord
 } from "./types.js";
 import { normalizePublishedPlaylistSnapshot } from "./snapshot-utils.js";
+import { importLegacyScreenFiles } from "./legacy-screen-files.js";
 
 export interface PostgresStoreOptions {
   connectionString: string;
@@ -94,6 +97,21 @@ function parseJson<T>(raw: string | null, fallback: T): T {
   return JSON.parse(raw) as T;
 }
 
+function parseStringArray(raw: string | null): string[] {
+  const value = parseJson<unknown>(raw, []);
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function parseReferenceRecord(raw: string | null): Record<string, string> {
+  const value = parseJson<unknown>(raw, {});
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof item === "string") out[key] = item;
+  }
+  return out;
+}
+
 /**
  * Durable store backed by Postgres. Supabase works through its Postgres
  * connection string, usually provided as DATABASE_URL.
@@ -101,6 +119,7 @@ function parseJson<T>(raw: string | null, fallback: T): T {
 export class PostgresStore implements TomorrowOSMigratableStore {
   private readonly pool: Pool;
   private ready?: Promise<void>;
+  private legacyImport?: Promise<void>;
 
   constructor(options: PostgresStoreOptions | string) {
     const connectionString =
@@ -193,6 +212,21 @@ export class PostgresStore implements TomorrowOSMigratableStore {
 
       CREATE INDEX IF NOT EXISTS uploaded_assets_sha256_idx
         ON uploaded_assets (sha256);
+
+      CREATE TABLE IF NOT EXISTS screen_tag_catalog (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        tags_json TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS screen_device_tags (
+        device_id TEXT PRIMARY KEY,
+        tags_json TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS screen_references (
+        device_id TEXT PRIMARY KEY,
+        references_json TEXT NOT NULL
+      );
 
       INSERT INTO schema_migrations (id, name)
         VALUES (1, 'initial_tomorrowos_store')
@@ -344,9 +378,25 @@ export class PostgresStore implements TomorrowOSMigratableStore {
     await this.pool.end();
   }
 
-  private async ensureReady(): Promise<void> {
+  private async connect(): Promise<void> {
     this.ready ??= this.init();
     await this.ready;
+  }
+
+  /** Import screen-tags.json and screen-references.json once, without re-entering this method. */
+  async loadLegacyScreenFiles(): Promise<void> {
+    await this.connect();
+    this.legacyImport ??= importLegacyScreenFiles(this, path.join(process.cwd(), "data"), {
+      readScreenTagState: () => this.readScreenTagState(),
+      writeScreenTagState: (state) => this.writeScreenTagState(state),
+      readScreenReferences: () => this.readScreenReferences(),
+      writeScreenReferences: (devices) => this.writeScreenReferences(devices)
+    });
+    await this.legacyImport;
+  }
+
+  private async ensureReady(): Promise<void> {
+    await this.loadLegacyScreenFiles();
   }
 
   async setPendingCode(code: string, record: PendingCodeRecord): Promise<void> {
@@ -782,6 +832,143 @@ export class PostgresStore implements TomorrowOSMigratableStore {
         ]);
       }
 
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getScreenTagState(): Promise<ScreenTagState> {
+    await this.ensureReady();
+    return this.readScreenTagState();
+  }
+
+  async replaceScreenTagState(state: ScreenTagState): Promise<void> {
+    await this.ensureReady();
+    await this.writeScreenTagState(state);
+  }
+
+  async getScreenReferences(deviceId: string): Promise<Record<string, string>> {
+    await this.ensureReady();
+    const all = await this.readScreenReferences();
+    return all[deviceId] ?? {};
+  }
+
+  async listScreenReferences(): Promise<Record<string, Record<string, string>>> {
+    await this.ensureReady();
+    return this.readScreenReferences();
+  }
+
+  async setScreenReferences(
+    deviceId: string,
+    references: Record<string, string>
+  ): Promise<void> {
+    await this.ensureReady();
+    if (Object.keys(references).length === 0) {
+      await this.pool.query("DELETE FROM screen_references WHERE device_id = $1", [deviceId]);
+      return;
+    }
+    await this.pool.query(`
+      INSERT INTO screen_references (device_id, references_json)
+      VALUES ($1, $2)
+      ON CONFLICT (device_id) DO UPDATE SET
+        references_json = EXCLUDED.references_json
+    `, [deviceId, JSON.stringify(references)]);
+  }
+
+  async deleteScreenReferences(deviceId: string): Promise<void> {
+    await this.ensureReady();
+    await this.pool.query("DELETE FROM screen_references WHERE device_id = $1", [deviceId]);
+  }
+
+  async replaceScreenReferences(
+    devices: Record<string, Record<string, string>>
+  ): Promise<void> {
+    await this.ensureReady();
+    await this.writeScreenReferences(devices);
+  }
+
+  private async readScreenTagState(): Promise<ScreenTagState> {
+    await this.connect();
+    const catalog = await this.pool.query<{ tags_json: string }>(`
+      SELECT tags_json
+      FROM screen_tag_catalog
+      WHERE id = 1
+    `);
+    const rows = await this.pool.query<{ device_id: string; tags_json: string }>(`
+      SELECT device_id, tags_json
+      FROM screen_device_tags
+    `);
+    const devices: Record<string, string[]> = {};
+    for (const row of rows.rows) {
+      const tags = parseStringArray(row.tags_json);
+      if (tags.length > 0) devices[row.device_id] = tags;
+    }
+    return {
+      catalog: parseStringArray(catalog.rows[0]?.tags_json ?? null),
+      devices
+    };
+  }
+
+  private async writeScreenTagState(state: ScreenTagState): Promise<void> {
+    await this.connect();
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("DELETE FROM screen_device_tags");
+      await client.query(`
+        INSERT INTO screen_tag_catalog (id, tags_json)
+        VALUES (1, $1)
+        ON CONFLICT (id) DO UPDATE SET tags_json = EXCLUDED.tags_json
+      `, [JSON.stringify(state.catalog)]);
+      for (const [deviceId, tags] of Object.entries(state.devices)) {
+        if (tags.length === 0) continue;
+        await client.query(`
+          INSERT INTO screen_device_tags (device_id, tags_json)
+          VALUES ($1, $2)
+        `, [deviceId, JSON.stringify(tags)]);
+      }
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  private async readScreenReferences(): Promise<Record<string, Record<string, string>>> {
+    await this.connect();
+    const rows = await this.pool.query<{ device_id: string; references_json: string }>(`
+      SELECT device_id, references_json
+      FROM screen_references
+    `);
+    const devices: Record<string, Record<string, string>> = {};
+    for (const row of rows.rows) {
+      const references = parseReferenceRecord(row.references_json);
+      if (Object.keys(references).length > 0) devices[row.device_id] = references;
+    }
+    return devices;
+  }
+
+  private async writeScreenReferences(
+    devices: Record<string, Record<string, string>>
+  ): Promise<void> {
+    await this.connect();
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("DELETE FROM screen_references");
+      for (const [deviceId, references] of Object.entries(devices)) {
+        if (Object.keys(references).length === 0) continue;
+        await client.query(`
+          INSERT INTO screen_references (device_id, references_json)
+          VALUES ($1, $2)
+        `, [deviceId, JSON.stringify(references)]);
+      }
       await client.query("COMMIT");
     } catch (err) {
       await client.query("ROLLBACK");

@@ -10,6 +10,9 @@ export interface MigrationResult {
   playlists: number;
   uploadedAssets: number;
   deviceAssignments: number;
+  screenTagCatalog: number;
+  screenTags: number;
+  screenReferences: number;
 }
 
 export async function exportTomorrowOSData(
@@ -20,13 +23,17 @@ export async function exportTomorrowOSData(
     deviceRegistry,
     pairedDevices,
     playlists,
-    uploadedAssets
+    uploadedAssets,
+    screenTags,
+    screenReferences
   ] = await Promise.all([
     store.listPendingCodes(),
     store.listDeviceRegistry(),
     store.listPairedDevices(),
     store.listPlaylists(),
-    store.listUploadedAssets()
+    store.listUploadedAssets(),
+    store.getScreenTagState(),
+    store.listScreenReferences()
   ]);
 
   const deviceAssignments = await Promise.all(
@@ -42,7 +49,18 @@ export async function exportTomorrowOSData(
     pairedDevices,
     playlists,
     uploadedAssets,
-    deviceAssignments
+    deviceAssignments,
+    screenTags: {
+      catalog: screenTags.catalog,
+      devices: Object.entries(screenTags.devices).map(([deviceId, tags]) => ({
+        deviceId,
+        tags
+      }))
+    },
+    screenReferences: Object.entries(screenReferences).map(([deviceId, references]) => ({
+      deviceId,
+      references
+    }))
   };
 }
 
@@ -74,6 +92,25 @@ export async function importTomorrowOSData(
     await store.setPendingCode(code, record);
   }
 
+  if (snapshot.screenTags) {
+    const devices: Record<string, string[]> = {};
+    for (const entry of snapshot.screenTags.devices) {
+      devices[entry.deviceId] = entry.tags;
+    }
+    await store.replaceScreenTagState({
+      catalog: snapshot.screenTags.catalog,
+      devices
+    });
+  }
+
+  if (snapshot.screenReferences) {
+    const devices: Record<string, Record<string, string>> = {};
+    for (const entry of snapshot.screenReferences) {
+      devices[entry.deviceId] = entry.references;
+    }
+    await store.replaceScreenReferences(devices);
+  }
+
   return {
     pendingCodes: snapshot.pendingCodes.length,
     deviceRegistry: snapshot.deviceRegistry.length,
@@ -83,7 +120,10 @@ export async function importTomorrowOSData(
     deviceAssignments: snapshot.deviceAssignments.reduce(
       (total, entry) => total + entry.assignments.length,
       0
-    )
+    ),
+    screenTagCatalog: snapshot.screenTags?.catalog.length ?? 0,
+    screenTags: snapshot.screenTags?.devices.length ?? 0,
+    screenReferences: snapshot.screenReferences?.length ?? 0
   };
 }
 
