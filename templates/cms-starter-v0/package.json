@@ -24,7 +24,7 @@
     "@types/node": "^20.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "concurrently": "^9.1.2",
+    "concurrently": "^9.2.5",
     "cross-env": "^7.0.3",
     "next": "^15.1.0",
     "react": "^19.0.0",
